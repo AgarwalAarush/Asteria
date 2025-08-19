@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Node } from 'reactflow'
 import { ReactFlowNodeDataType, NodeKind } from '@/lib/schemas'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ interface NodeEditPanelProps {
   selectedNodes: Node<ReactFlowNodeDataType>[]
   onAddParent: (childId: string, parentId: string) => void
   isAddingNewNode?: boolean
+  edges?: { source: string; target: string }[]
 }
 
 export function NodeEditPanel({ 
@@ -33,12 +34,16 @@ export function NodeEditPanel({
   allNodes,
   selectedNodes,
   onAddParent,
-  isAddingNewNode = false
+  isAddingNewNode = false,
+  edges = []
 }: NodeEditPanelProps) {
   const [formData, setFormData] = useState<Partial<ReactFlowNodeDataType>>({})
   const [parentSearch, setParentSearch] = useState('')
   const [suggestedParents, setSuggestedParents] = useState<Node<ReactFlowNodeDataType>[]>([])
   const [selectedParentIndex, setSelectedParentIndex] = useState(-1)
+  const [tagSearch, setTagSearch] = useState('')
+  const [suggestedTags, setSuggestedTags] = useState<string[]>([])
+  const [selectedTagIndex, setSelectedTagIndex] = useState(-1)
 
   useEffect(() => {
     if (node) {
@@ -56,10 +61,25 @@ export function NodeEditPanel({
     }
   }, [node])
 
+  // Get current parent nodes (memoized to prevent infinite loops)
+  const currentParents = useMemo(() => {
+    return node ? allNodes.filter(n => 
+      edges.some(e => e.source === n.id && e.target === node.id)
+    ) : []
+  }, [node, allNodes, edges])
+
+  // Get all existing tags across all nodes (memoized to prevent infinite loops)
+  const allExistingTags = useMemo(() => {
+    return Array.from(new Set(
+      allNodes.flatMap(n => n.data.tags || [])
+    )).sort()
+  }, [allNodes])
+
   useEffect(() => {
     if (parentSearch.trim()) {
       const filtered = allNodes.filter(n => 
         n.id !== node?.id && 
+        !currentParents.some(p => p.id === n.id) && // exclude current parents
         n.data.title.toLowerCase().includes(parentSearch.toLowerCase())
       ).slice(0, 5)
       setSuggestedParents(filtered)
@@ -68,7 +88,28 @@ export function NodeEditPanel({
       setSuggestedParents([])
       setSelectedParentIndex(-1)
     }
-  }, [parentSearch, allNodes, node])
+  }, [parentSearch, allNodes, node, currentParents])
+
+  useEffect(() => {
+    if (tagSearch.trim()) {
+      const currentTags = formData.tags || []
+      const filtered = allExistingTags.filter(tag => 
+        !currentTags.includes(tag) && // exclude current tags
+        tag.toLowerCase().includes(tagSearch.toLowerCase())
+      ).slice(0, 5)
+      
+      // If search doesn't match any existing tag, suggest creating a new one
+      if (filtered.length === 0 || !filtered.some(tag => tag.toLowerCase() === tagSearch.toLowerCase())) {
+        filtered.push(`Create "${tagSearch}"`)
+      }
+      
+      setSuggestedTags(filtered)
+      setSelectedTagIndex(-1)
+    } else {
+      setSuggestedTags([])
+      setSelectedTagIndex(-1)
+    }
+  }, [tagSearch, allExistingTags, formData.tags])
 
   const handleSave = () => {
     if (node) {
@@ -83,6 +124,27 @@ export function NodeEditPanel({
       setParentSearch('')
       setSuggestedParents([])
     }
+  }
+
+  const handleAddTag = (tag: string) => {
+    const newTag = tag.startsWith('Create "') ? tag.slice(8, -1) : tag
+    const currentTags = formData.tags || []
+    if (!currentTags.includes(newTag)) {
+      setFormData(prev => ({ 
+        ...prev, 
+        tags: [...currentTags, newTag]
+      }))
+    }
+    setTagSearch('')
+    setSuggestedTags([])
+  }
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    const currentTags = formData.tags || []
+    setFormData(prev => ({ 
+      ...prev, 
+      tags: currentTags.filter(tag => tag !== tagToRemove)
+    }))
   }
 
   const handleParentSearchKeyDown = (e: React.KeyboardEvent) => {
@@ -107,6 +169,31 @@ export function NodeEditPanel({
     } else if (e.key === 'Escape') {
       setSuggestedParents([])
       setSelectedParentIndex(-1)
+    }
+  }
+
+  const handleTagSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (suggestedTags.length === 0) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSelectedTagIndex(prev => 
+        prev < suggestedTags.length - 1 ? prev + 1 : 0
+      )
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSelectedTagIndex(prev => 
+        prev > 0 ? prev - 1 : suggestedTags.length - 1
+      )
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const targetIndex = selectedTagIndex >= 0 ? selectedTagIndex : 0
+      if (suggestedTags[targetIndex]) {
+        handleAddTag(suggestedTags[targetIndex])
+      }
+    } else if (e.key === 'Escape') {
+      setSuggestedTags([])
+      setSelectedTagIndex(-1)
     }
   }
 
@@ -183,21 +270,79 @@ export function NodeEditPanel({
 
         {/* Tags */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-900 dark:text-white">Tags (comma-separated)</label>
-          <Input
-            value={formData.tags?.join(', ') || ''}
-            onChange={(e) => setFormData(prev => ({ 
-              ...prev, 
-              tags: e.target.value.split(',').map(tag => tag.trim()).filter(Boolean)
-            }))}
-            className="border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
-            placeholder="tag1, tag2, tag3"
-          />
+          <label className="text-sm font-medium text-gray-900 dark:text-white">Tags</label>
+          
+          {/* Current Tags */}
+          {formData.tags && formData.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 p-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-[#191919] rounded-lg">
+              {formData.tags.map((tag, index) => (
+                <span
+                  key={index}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100 text-xs rounded-md"
+                >
+                  {tag}
+                  <button
+                    onClick={() => handleRemoveTag(tag)}
+                    className="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100 ml-1"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Tag Search */}
+          <div className="relative">
+            <Input
+              value={tagSearch}
+              onChange={(e) => setTagSearch(e.target.value)}
+              onKeyDown={handleTagSearchKeyDown}
+              className="border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
+              placeholder="Search tags or type to create new..."
+            />
+            {suggestedTags.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-black border border-gray-200 dark:border-[#191919] rounded-lg shadow-lg z-10">
+                {suggestedTags.map((tag, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleAddTag(tag)}
+                    className={`w-full px-2 py-1.5 text-left first:rounded-t-lg last:rounded-b-lg text-gray-900 dark:text-white transition-colors ${
+                      index === selectedTagIndex 
+                        ? 'bg-blue-100 dark:bg-blue-900/50' 
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <div className={`text-xs ${tag.startsWith('Create "') ? 'font-medium text-green-600 dark:text-green-400' : ''}`}>
+                      {tag}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Parent Nodes */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-900 dark:text-white">Add Parent Nodes</label>
+          <label className="text-sm font-medium text-gray-900 dark:text-white">Parent Nodes</label>
+          
+          {/* Current Parent Nodes */}
+          {currentParents.length > 0 && (
+            <div className="flex flex-wrap gap-2 p-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-[#191919] rounded-lg">
+              {currentParents.map((parent) => (
+                <span
+                  key={parent.id}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900/50 text-green-900 dark:text-green-100 text-xs rounded-md"
+                >
+                  {parent.data.title}
+                  <span className="text-green-700 dark:text-green-300 text-[10px] opacity-60 capitalize">
+                    {parent.data.kind}
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
           
           {/* Add selected nodes as parents */}
           {selectedNodes.length > 1 && node && selectedNodes.some(n => n.id !== node.id) && (
@@ -228,13 +373,14 @@ export function NodeEditPanel({
             </div>
           )}
 
+          {/* Parent Search */}
           <div className="relative">
             <Input
               value={parentSearch}
               onChange={(e) => setParentSearch(e.target.value)}
               onKeyDown={handleParentSearchKeyDown}
               className="border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
-              placeholder="Search for parent nodes..."
+              placeholder="Search to add parent nodes..."
             />
             {suggestedParents.length > 0 && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-black border border-gray-200 dark:border-[#191919] rounded-lg shadow-lg z-10">

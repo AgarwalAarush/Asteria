@@ -556,6 +556,7 @@ export default function GraphPage() {
         selectedNodes={selectedNodes}
         onAddParent={handleAddParent}
         isAddingNewNode={isAddingNewNode}
+        edges={edges.map(e => ({ source: e.source, target: e.target }))}
       />
     </div>
   )
