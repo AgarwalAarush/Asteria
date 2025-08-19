@@ -1,17 +1,17 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { ReactFlowNodeDataType, NodeKind } from '@/lib/schemas'
 
-// Light/dark adaptive colors: light => white with black border; dark => #191919 with white text
+// Light/dark adaptive colors: light => white with black border; dark => #191919 with no border
 const nodeKindColors: Record<NodeKind, { bg: string; border: string; text: string }> = {
-  problem: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-gray-600', text: 'text-gray-900 dark:text-white' },
-  solution: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-gray-600', text: 'text-gray-900 dark:text-white' },
-  market: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-gray-600', text: 'text-gray-900 dark:text-white' },
-  tech: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-gray-600', text: 'text-gray-900 dark:text-white' },
-  theme: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-gray-600', text: 'text-gray-900 dark:text-white' },
-  note: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-gray-600', text: 'text-gray-900 dark:text-white' },
+  problem: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-transparent', text: 'text-gray-900 dark:text-white' },
+  solution: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-transparent', text: 'text-gray-900 dark:text-white' },
+  market: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-transparent', text: 'text-gray-900 dark:text-white' },
+  tech: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-transparent', text: 'text-gray-900 dark:text-white' },
+  theme: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-transparent', text: 'text-gray-900 dark:text-white' },
+  note: { bg: 'bg-white dark:bg-[#191919]', border: 'border-black dark:border-transparent', text: 'text-gray-900 dark:text-white' },
 }
 
 // Professional node kind indicators
@@ -24,7 +24,8 @@ const nodeKindLabels: Record<NodeKind, string> = {
   note: 'NOTE',
 }
 
-export function IdeaNodeCard({ data, selected }: NodeProps<ReactFlowNodeDataType>) {
+export function IdeaNodeCard({ data, selected, id, onAddChild, ...props }: NodeProps<ReactFlowNodeDataType> & { onAddChild?: (parentId: string) => void }) {
+  const [isHovered, setIsHovered] = useState(false)
   const colors = nodeKindColors[data.kind]
   const label = nodeKindLabels[data.kind]
   
@@ -49,6 +50,8 @@ export function IdeaNodeCard({ data, selected }: NodeProps<ReactFlowNodeDataType
         ${selected ? 'ring-2 ring-gray-400 ring-offset-2' : ''}
         transition-all duration-200 hover:shadow
       `}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Input Handle */}
       <Handle
@@ -58,10 +61,25 @@ export function IdeaNodeCard({ data, selected }: NodeProps<ReactFlowNodeDataType
       />
       
       {/* Header */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 relative">
         <span className="text-[10px] font-semibold tracking-widest opacity-80">
           {label}
         </span>
+        
+        {/* Hover Plus Button */}
+        {isHovered && onAddChild && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onAddChild(id!)
+            }}
+            className="absolute left-1/2 -top-1 transform -translate-x-1/2 w-5 h-5 bg-black dark:bg-white text-white dark:text-black rounded-full flex items-center justify-center text-xs font-bold hover:scale-110 transition-transform shadow-lg z-10"
+            title="Add child node"
+          >
+            +
+          </button>
+        )}
+        
         {averageScore && (
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 text-current">
             {averageScore}/5

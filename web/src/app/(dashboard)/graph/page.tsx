@@ -1,16 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Node, Edge } from 'reactflow'
 import { GraphCanvasProvider } from '@/components/GraphCanvas'
 import { AIOverlay } from '@/components/unified-sidebar'
-import { NodeEditModal } from '@/components/node-edit-modal'
+import { NodeEditPanel } from '@/components/NodeEditPanel'
 import { AuthModal } from '@/components/auth/AuthModal'
-import {
-  SidebarProvider,
-  SidebarInset,
-  SidebarTrigger,
-} from '@/components/ui/sidebar'
+
+
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -20,38 +17,17 @@ import {
   NavigationMenuTrigger,
   navigationMenuTriggerStyle,
 } from '@/components/ui/navigation-menu'
-import { ReactFlowNodeDataType, ReactFlowEdgeDataType } from '@/lib/schemas'
+import { ReactFlowNodeDataType, ReactFlowEdgeDataType, NodeKind, Relation } from '@/lib/schemas'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import Link from 'next/link'
 import { ThemeToggle } from '@/components/theme-toggle'
 
-// Theme-aware logo component
+// Theme-aware logo text component
 function AsteriaLogo() {
-  const [isDark, setIsDark] = useState(false)
-
-  useEffect(() => {
-    const updateTheme = () => {
-      setIsDark(document.documentElement.classList.contains('dark'))
-    }
-    
-    updateTheme() // Initial check
-    
-    // Watch for theme changes
-    const observer = new MutationObserver(updateTheme)
-    observer.observe(document.documentElement, { 
-      attributes: true, 
-      attributeFilter: ['class'] 
-    })
-    
-    return () => observer.disconnect()
-  }, [])
-
   return (
-    <img 
-      src={isDark ? '/asteria-dark.png' : '/asteria-light.png'}
-      alt="Asteria"
-      className="h-6 w-auto"
-    />
+    <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+      Asteria
+    </h1>
   )
 }
 
@@ -118,18 +94,18 @@ const sampleEdges: Edge<ReactFlowEdgeDataType>[] = [
       id: 'e1-2',
       source: '1',
       target: '2',
-      relation: 'solves',
+      relation: 'related',
       weight: 0.8,
     },
   },
   {
-    id: 'e2-3',
-    source: '2',
+    id: 'e1-3',
+    source: '1',
     target: '3',
     type: 'relationEdge',
     data: {
-      id: 'e2-3',
-      source: '2',
+      id: 'e1-3',
+      source: '1',
       target: '3',
       relation: 'related',
       weight: 0.6,
@@ -145,8 +121,9 @@ export default function GraphPage() {
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [isDemoMode, setIsDemoMode] = useState(false)
   const [editingNode, setEditingNode] = useState<Node<ReactFlowNodeDataType> | null>(null)
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isEditPanelOpen, setIsEditPanelOpen] = useState(false)
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false)
+  const [isAddingNewNode, setIsAddingNewNode] = useState(false)
 
   // Check for demo mode in localStorage - MUST be at top level
   useEffect(() => {
@@ -156,17 +133,30 @@ export default function GraphPage() {
     }
   }, [])
 
-  // Handle node selection
-  const handleNodeClick = (node: Node<ReactFlowNodeDataType>) => {
-    // Update selected nodes for multi-selection (for now, just single selection)
-    setSelectedNodes([node])
-  }
+  // Handle node selection (with multi-select support)
+  const handleNodeClick = useCallback((node: Node<ReactFlowNodeDataType>, event?: React.MouseEvent) => {
+    if (event?.ctrlKey || event?.metaKey) {
+      // Multi-select: add/remove from selection
+      setSelectedNodes(prev => {
+        const isSelected = prev.some(n => n.id === node.id)
+        if (isSelected) {
+          return prev.filter(n => n.id !== node.id)
+        } else {
+          return [...prev, node]
+        }
+      })
+    } else {
+      // Single select
+      setSelectedNodes([node])
+    }
+  }, [])
 
   // Handle double-click to edit
-  const handleNodeDoubleClick = (node: Node<ReactFlowNodeDataType>) => {
+  const handleNodeDoubleClick = useCallback((node: Node<ReactFlowNodeDataType>) => {
     setEditingNode(node)
-    setIsEditModalOpen(true)
-  }
+    setIsEditPanelOpen(true)
+    setIsAddingNewNode(false)
+  }, [])
 
   // Handle node updates
   const handleNodeUpdate = (nodeId: string, updates: Partial<ReactFlowNodeDataType>) => {
@@ -217,6 +207,138 @@ export default function GraphPage() {
     }
     setEdges((eds) => [...eds, newEdge])
   }
+
+  // Handle adding new nodes
+  const handleAddNode = (newNode: Node<ReactFlowNodeDataType>) => {
+    setNodes((nds) => [...nds, newNode])
+  }
+
+  // Handle adding linked nodes from radial actions
+  const handleAddLinkedNode = (fromNodeId: string, kind: NodeKind, relation: Relation) => {
+    const fromNode = nodes.find(n => n.id === fromNodeId)
+    if (!fromNode) return
+
+    // Position new node relative to the source node
+    const offset = 200
+    const newNode: Node<ReactFlowNodeDataType> = {
+      id: `node-${Date.now()}`,
+      type: 'ideaNode',
+      position: { 
+        x: fromNode.position.x + offset, 
+        y: fromNode.position.y 
+      },
+      data: {
+        id: `node-${Date.now()}`,
+        title: `New ${kind}`,
+        kind,
+        body: '',
+        tags: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    }
+
+    const newEdge: Edge<ReactFlowEdgeDataType> = {
+      id: `edge-${Date.now()}`,
+      source: fromNodeId,
+      target: newNode.id,
+      type: 'relationEdge',
+      data: {
+        id: `edge-${Date.now()}`,
+        source: fromNodeId,
+        target: newNode.id,
+        relation,
+        weight: 0.8,
+      },
+    }
+
+    setNodes((nds) => [...nds, newNode])
+    setEdges((eds) => [...eds, newEdge])
+  }
+
+  // Handle adding parent relationship
+  const handleAddParent = (childId: string, parentId: string) => {
+    // Check if edge already exists
+    const existingEdge = edges.find(e => 
+      e.source === parentId && e.target === childId
+    )
+    
+    if (existingEdge) return // Edge already exists
+
+    const newEdge: Edge<ReactFlowEdgeDataType> = {
+      id: `edge-${Date.now()}`,
+      source: parentId,
+      target: childId,
+      type: 'relationEdge',
+      data: {
+        id: `edge-${Date.now()}`,
+        source: parentId,
+        target: childId,
+        relation: 'related',
+        weight: 0.7,
+      },
+    }
+
+    setEdges((eds) => [...eds, newEdge])
+  }
+
+  // Handle adding new node with parent from hover plus button
+  const handleAddNodeWithParent = useCallback((parentId: string) => {
+    // Generate IDs first
+    const newNodeId = `node-${Date.now()}`
+    const newEdgeId = `edge-${Date.now()}`
+    
+    setNodes((currentNodes) => {
+      const parentNode = currentNodes.find(n => n.id === parentId)
+      if (!parentNode) return currentNodes
+
+      // Position new node relative to parent
+      const offset = 200
+      const newNode: Node<ReactFlowNodeDataType> = {
+        id: newNodeId,
+        type: 'ideaNode',
+        position: { 
+          x: parentNode.position.x + offset, 
+          y: parentNode.position.y 
+        },
+        data: {
+          id: newNodeId,
+          title: 'New Node',
+          kind: 'note',
+          body: '',
+          tags: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      }
+
+      // Set the editing node for the panel (using setTimeout to ensure state update completes)
+      setTimeout(() => {
+        setEditingNode(newNode)
+        setIsEditPanelOpen(true)
+        setIsAddingNewNode(true)
+      }, 0)
+
+      return [...currentNodes, newNode]
+    })
+    
+    // Create edge from parent to new node
+    const newEdge: Edge<ReactFlowEdgeDataType> = {
+      id: newEdgeId,
+      source: parentId,
+      target: newNodeId,
+      type: 'relationEdge',
+      data: {
+        id: newEdgeId,
+        source: parentId,
+        target: newNodeId,
+        relation: 'related',
+        weight: 0.7,
+      },
+    }
+    
+    setEdges((eds) => [...eds, newEdge])
+  }, [])
 
   if (loading) {
     return (
@@ -308,10 +430,11 @@ export default function GraphPage() {
   }
 
   return (
-    <SidebarProvider>
-      <SidebarInset>
+    <div className="flex h-screen bg-white dark:bg-black">
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
         {/* Modern Navigation Header */}
-        <header className="flex h-12 shrink-0 items-center gap-4 px-6 bg-white dark:bg-black">
+        <header className="flex h-12 shrink-0 items-center gap-4 px-6 bg-white dark:bg-black border-b border-gray-200 dark:border-[#191919]">
           <div className="flex items-center gap-3">
             <AsteriaLogo />
           </div>
@@ -367,15 +490,16 @@ export default function GraphPage() {
               className="px-3 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
               aria-label="Toggle AI Assistant"
             >
-              ⭐
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="12,2 15.09,8.26 22,9 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9 8.91,8.26" fill="currentColor"/>
+              </svg>
             </button>
           </div>
         </header>
 
         {/* Main graph canvas */}
-        <div className="flex flex-1 flex-col">
-          <div className="min-h-[calc(100vh-3rem)] flex-1 bg-white dark:bg-black">
-            <GraphCanvasProvider
+        <div className="flex-1 bg-white dark:bg-black">
+                      <GraphCanvasProvider
               nodes={nodes}
               edges={edges}
               onNodesChange={setNodes}
@@ -383,49 +507,56 @@ export default function GraphPage() {
               onNodeClick={handleNodeClick}
               onNodeDoubleClick={handleNodeDoubleClick}
               onConnect={handleConnect}
+              onAddNode={handleAddNode}
+              onAddNodeWithParent={handleAddNodeWithParent}
               className="w-full h-full"
             />
-          </div>
         </div>
-      </SidebarInset>
+      </div>
 
-      {/* AI Assistant Overlay */}
+      {/* AI Assistant Floating Window */}
       {isAIAssistantOpen && (
-        <div className="pointer-events-none fixed left-1/2 top-16 z-30 w-[min(1000px,92vw)] -translate-x-1/2">
-          <div className="pointer-events-auto rounded-xl border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75 shadow-lg">
-            <div className="p-3 border-b">
-              <NavigationMenu>
-                <NavigationMenuList>
-                  <NavigationMenuItem>
-                    <NavigationMenuLink className={navigationMenuTriggerStyle()} asChild>
-                      <span>AI Assistant</span>
-                    </NavigationMenuLink>
-                  </NavigationMenuItem>
-                </NavigationMenuList>
-              </NavigationMenu>
-            </div>
-            <div className="p-4">
-              <AIOverlay
-                nodes={nodes}
-                edges={edges}
-                selectedNodes={selectedNodes}
-                onAIAction={handleAIAction}
-              />
-            </div>
+        <div className="fixed top-16 right-4 w-96 h-[calc(100vh-5rem)] bg-white dark:bg-black border border-gray-200 dark:border-[#191919] rounded-xl shadow-lg flex flex-col z-50">
+          <div className="p-4 border-b border-gray-200 dark:border-[#191919] flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">AI Assistant</h2>
+            <button
+              onClick={() => setIsAIAssistantOpen(false)}
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2"/>
+                <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2"/>
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 p-4 overflow-y-auto">
+            <AIOverlay
+              nodes={nodes}
+              edges={edges}
+              selectedNodes={selectedNodes}
+              onAIAction={handleAIAction}
+            />
           </div>
         </div>
       )}
 
-      {/* Node Edit Modal */}
-      <NodeEditModal
+
+
+      {/* Node Edit Panel */}
+      <NodeEditPanel
         node={editingNode}
-        isOpen={isEditModalOpen}
+        isOpen={isEditPanelOpen}
         onClose={() => {
-          setIsEditModalOpen(false)
+          setIsEditPanelOpen(false)
           setEditingNode(null)
+          setIsAddingNewNode(false)
         }}
         onSave={handleNodeUpdate}
+        allNodes={nodes}
+        selectedNodes={selectedNodes}
+        onAddParent={handleAddParent}
+        isAddingNewNode={isAddingNewNode}
       />
-    </SidebarProvider>
+    </div>
   )
 }

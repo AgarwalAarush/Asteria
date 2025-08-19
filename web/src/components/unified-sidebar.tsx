@@ -16,6 +16,12 @@ import {
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { ReactFlowNodeDataType, ReactFlowEdgeDataType } from '@/lib/schemas'
 
 // AI modes
@@ -187,34 +193,52 @@ export function AIOverlay({
   const currentAIMode = AI_MODES.find(m => m.id === activeAIMode)!
 
   return (
-    <div className="w-full">
-      <div className="flex flex-wrap items-center gap-2">
-        {AI_MODES.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => setActiveAIMode(m.id)}
-            className={`h-12 px-4 rounded-lg border transition-colors ${activeAIMode === m.id ? 'bg-accent' : 'hover:bg-accent/50'}`}
-          >
-            <span className="mr-2">{m.icon}</span>
-            <span className="font-medium text-sm">{m.name}</span>
-          </button>
-        ))}
+    <div className="w-full space-y-4">
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-gray-900 dark:text-white">Mode</label>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button 
+              variant="outline" 
+              className="w-full justify-between border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              {currentAIMode.name}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] bg-white dark:bg-black border-gray-200 dark:border-[#191919]">
+            {AI_MODES.map((mode) => (
+              <DropdownMenuItem 
+                key={mode.id}
+                onClick={() => setActiveAIMode(mode.id)}
+                className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                {mode.name}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-      <div className="mt-4">
-        <div className="mb-2 text-sm font-semibold flex items-center gap-2">
-          <span>{currentAIMode.icon}</span>
-          <span>{currentAIMode.name}</span>
-        </div>
+      
+      <div className="space-y-3">
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder={`Enter your ${currentAIMode.name.toLowerCase()} request...`}
-          className="min-h-[120px] resize-none"
+          className="min-h-[200px] resize-none border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
         />
         {selectedCount > 0 && (
-          <div className="mt-2 text-xs text-muted-foreground">Working with {selectedCount} selected node(s)</div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">
+            Working with {selectedCount} selected node(s)
+          </div>
         )}
-        <Button onClick={handleAIAction} disabled={isLoading} className="mt-3">
+        <Button 
+          onClick={handleAIAction} 
+          disabled={isLoading} 
+          className="w-full bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
+        >
           {isLoading ? 'Processing…' : currentAIMode.name}
         </Button>
       </div>

@@ -420,3 +420,8 @@ RAG_ENABLED=false
 - Obsidian live sync; CSV import; theme mining across spaces
 - Offline-first (Yjs); enterprise SSO; RBAC policies
 
+
+Future:
+- Hidden notes, when clicking on the node can view the notes
+- Analytics
+- Querying nodes
