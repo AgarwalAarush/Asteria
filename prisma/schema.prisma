@@ -1,0 +1,154 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String        @id @default(cuid())
+  email     String        @unique
+  name      String?
+  spaces    Space[]
+  members   SpaceMember[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@map("User")
+}
+
+model Space {
+  id        String        @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User          @relation(fields: [ownerId], references: [id])
+  members   SpaceMember[]
+  nodes     Node[]
+  edges     Edge[]
+  tags      Tag[]
+  snippets  Snippet[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@map("Space")
+}
+
+model SpaceMember {
+  id      String @id @default(cuid())
+  spaceId String
+  userId  String
+  role    Role   @default(EDITOR)
+  space   Space  @relation(fields: [spaceId], references: [id])
+  user    User   @relation(fields: [userId], references: [id])
+
+  @@unique([spaceId, userId])
+  @@map("SpaceMember")
+}
+
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+model Node {
+  id                 String    @id @default(cuid())
+  spaceId            String
+  title              String
+  kind               NodeKind
+  body               String    @default("")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  scorePainkiller    Int?
+  scoreFounderFit    Int?
+  scoreTiming        Int?
+  scoreMoat          Int?
+  scorePracticality  Int?
+  space              Space     @relation(fields: [spaceId], references: [id])
+  tags               NodeTag[]
+  outEdges           Edge[]    @relation("Edge_source")
+  inEdges            Edge[]    @relation("Edge_target")
+
+  @@index([spaceId, kind])
+  @@map("Node")
+}
+
+enum NodeKind {
+  problem
+  solution
+  market
+  tech
+  theme
+  note
+}
+
+model Edge {
+  id       String   @id @default(cuid())
+  spaceId  String
+  sourceId String
+  targetId String
+  relation Relation
+  weight   Float?
+  space    Space    @relation(fields: [spaceId], references: [id])
+  source   Node     @relation("Edge_source", fields: [sourceId], references: [id])
+  target   Node     @relation("Edge_target", fields: [targetId], references: [id])
+
+  @@index([sourceId])
+  @@index([targetId])
+  @@map("Edge")
+}
+
+enum Relation {
+  solves
+  depends_on
+  competes_with
+  related
+  enables
+  contradicts
+}
+
+model Tag {
+  id      String    @id @default(cuid())
+  spaceId String
+  label   String
+  space   Space     @relation(fields: [spaceId], references: [id])
+  nodes   NodeTag[]
+  
+  @@unique([spaceId, label])
+  @@index([spaceId, label])
+  @@map("Tag")
+}
+
+model NodeTag {
+  nodeId String
+  tagId  String
+  node   Node   @relation(fields: [nodeId], references: [id])
+  tag    Tag    @relation(fields: [tagId], references: [id])
+  
+  @@id([nodeId, tagId])
+  @@map("NodeTag")
+}
+
+model Snippet {
+  id        String    @id @default(cuid())
+  spaceId   String
+  url       String?
+  title     String?
+  quote     String
+  date      DateTime?
+  tags      String[]
+  embedding Float[]?
+  space     Space     @relation(fields: [spaceId], references: [id])
+
+  @@map("Snippet")
+}
