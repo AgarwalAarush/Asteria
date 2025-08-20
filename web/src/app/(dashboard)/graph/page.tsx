@@ -817,7 +817,7 @@ export default function GraphPage() {
 
       {/* AI Assistant Floating Window */}
       {isAIAssistantOpen && (
-        <div className="fixed top-16 right-4 w-72 h-[calc(100vh-5rem)] bg-white dark:bg-[#191919] border border-gray-200 dark:border-[#262626] rounded-xl shadow-lg flex flex-col z-50">
+        <div className="fixed top-16 right-4 w-[28rem] h-[calc(100vh-5rem)] bg-white dark:bg-[#191919] border border-gray-200 dark:border-[#262626] rounded-xl shadow-lg flex flex-col z-50 text-[13px]">
           <div className="p-4 border-b border-gray-200 dark:border-[#262626] flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">AI Assistant</h2>
             <button

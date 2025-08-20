@@ -44,12 +44,27 @@ export function AIMentionInput({ nodes, placeholder, className = '', onChange, o
   const [query, setQuery] = useState<string>('')
   const [isSuggestOpen, setIsSuggestOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 })
+  const [mode, setMode] = useState<'node' | 'tag'>('node')
+  const allTags = useMemo(() => {
+    const t = new Set<string>()
+    nodes.forEach(n => (n.data.tags || []).forEach(tag => t.add(tag)))
+    return Array.from(t).sort()
+  }, [nodes])
 
   const filteredNodes = useMemo(() => {
+    if (mode !== 'node') return []
     if (!query) return nodes.slice(0, 8)
     const q = query.toLowerCase()
     return nodes.filter(n => n.data.title.toLowerCase().includes(q)).slice(0, 8)
-  }, [nodes, query])
+  }, [nodes, query, mode])
+
+  const filteredTags = useMemo(() => {
+    if (mode !== 'tag') return []
+    if (!query) return allTags.slice(0, 8)
+    const q = query.toLowerCase()
+    return allTags.filter(tag => tag.toLowerCase().includes(q)).slice(0, 8)
+  }, [allTags, query, mode])
 
   const updateExternalValue = useCallback(() => {
     if (!editorRef.current) return
@@ -79,7 +94,41 @@ export function AIMentionInput({ nodes, placeholder, className = '', onChange, o
         const afterAt = preText.slice(lastAt + 1)
         const hasSpace = /\s/.test(afterAt)
         if (!hasSpace) {
-          activeQuery = afterAt
+          // Determine mode and actual query (support @tag:...)
+          if (afterAt.startsWith('tag:')) {
+            setMode('tag')
+            activeQuery = afterAt.slice(4)
+          } else {
+            setMode('node')
+            activeQuery = afterAt
+          }
+          // Position menu at the '@' horizontal position
+          // Walk to the text node at index lastAt
+          const walker = document.createTreeWalker(editorRef.current, NodeFilter.SHOW_TEXT)
+          let remaining = lastAt
+          let nodeAt: Text | null = null
+          let offsetAt = 0
+          while (walker.nextNode()) {
+            const t = walker.currentNode as Text
+            const len = (t.nodeValue || '').length
+            if (remaining <= len) {
+              nodeAt = t
+              offsetAt = remaining
+              break
+            }
+            remaining -= len
+          }
+          let left = 0, top = 0
+          if (nodeAt) {
+            const atRange = document.createRange()
+            atRange.setStart(nodeAt, Math.max(0, offsetAt))
+            atRange.setEnd(nodeAt, Math.max(0, Math.min(offsetAt + 1, (nodeAt.nodeValue || '').length)))
+            const atRect = atRange.getBoundingClientRect()
+            const containerRect = containerRef.current!.getBoundingClientRect()
+            left = Math.max(0, atRect.left - containerRect.left)
+            top = Math.max(0, atRect.bottom - containerRect.top)
+          }
+          setMenuPos({ left, top })
         }
       }
     }
@@ -129,7 +178,7 @@ export function AIMentionInput({ nodes, placeholder, className = '', onChange, o
         span.contentEditable = 'false'
         span.dataset.nodeId = node.id
         span.dataset.title = node.data.title
-        span.className = 'inline-flex items-center px-1.5 py-0.5 rounded-md border border-gray-200 dark:border-[#262626] bg-gray-100 dark:bg-[#262626] text-gray-900 dark:text-white text-[11px] align-middle'
+        span.className = 'inline-flex items-center px-1 py-0 rounded-md border border-gray-200 dark:border-[#262626] bg-gray-100 dark:bg-[#191919] text-gray-900 dark:text-white align-middle'
         span.textContent = `@${node.data.title}`
 
         const space = document.createTextNode(' ')
@@ -152,18 +201,77 @@ export function AIMentionInput({ nodes, placeholder, className = '', onChange, o
     if (!isSuggestOpen) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex(i => (i + 1) % Math.max(filteredNodes.length, 1))
+      const len = mode === 'tag' ? filteredTags.length : filteredNodes.length
+      setSelectedIndex(i => (i + 1) % Math.max(len, 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setSelectedIndex(i => (i - 1 + Math.max(filteredNodes.length, 1)) % Math.max(filteredNodes.length, 1))
+      const len = mode === 'tag' ? filteredTags.length : filteredNodes.length
+      setSelectedIndex(i => (i - 1 + Math.max(len, 1)) % Math.max(len, 1))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      const node = filteredNodes[selectedIndex]
-      if (node) insertMention(node)
+      if (mode === 'tag') {
+        const tag = filteredTags[selectedIndex]
+        if (tag) insertTagMention(tag)
+      } else {
+        const node = filteredNodes[selectedIndex]
+        if (node) insertMention(node)
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault()
       closeSuggestions()
     }
+  }
+
+  const insertTagMention = (tag: string) => {
+    if (!editorRef.current) return
+    const sel = document.getSelection()
+    if (!sel || sel.rangeCount === 0) return
+    const range = sel.getRangeAt(0)
+
+    const pre = range.cloneRange()
+    pre.setStart(editorRef.current, 0)
+    const preText = pre.toString()
+    const atIndex = preText.lastIndexOf('@')
+    if (atIndex !== -1) {
+      const walker = document.createTreeWalker(editorRef.current, NodeFilter.SHOW_TEXT)
+      let remaining = atIndex
+      let nodeAt: Text | null = null
+      let offsetAt = 0
+      while (walker.nextNode()) {
+        const t = walker.currentNode as Text
+        const len = (t.nodeValue || '').length
+        if (remaining <= len) {
+          nodeAt = t
+          offsetAt = remaining
+          break
+        }
+        remaining -= len
+      }
+      if (nodeAt) {
+        const replaceRange = document.createRange()
+        replaceRange.setStart(nodeAt, offsetAt)
+        replaceRange.setEnd(sel.anchorNode!, sel.anchorOffset!)
+        replaceRange.deleteContents()
+
+        const span = document.createElement('span')
+        span.contentEditable = 'false'
+        span.dataset.tag = tag
+        span.className = 'inline-flex items-center px-1 py-0 rounded-md border border-gray-200 dark:border-[#262626] bg-gray-100 dark:bg-[#191919] text-gray-900 dark:text-white align-middle'
+        span.textContent = `@tag:${tag}`
+
+        const space = document.createTextNode(' ')
+        replaceRange.insertNode(space)
+        replaceRange.insertNode(span)
+
+        const newRange = document.createRange()
+        newRange.setStartAfter(space)
+        newRange.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(newRange)
+      }
+    }
+    closeSuggestions()
+    updateExternalValue()
   }
 
   useEffect(() => {
@@ -195,16 +303,29 @@ export function AIMentionInput({ nodes, placeholder, className = '', onChange, o
       />
 
       {isSuggestOpen && (
-        <div className="absolute left-0 top-full mt-1 w-full bg-white dark:bg-[#191919] border border-gray-200 dark:border-[#262626] rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-          {filteredNodes.map((n, idx) => (
-            <button
-              key={n.id}
-              className={`w-full px-2 py-1.5 text-left text-sm text-gray-900 dark:text-white first:rounded-t-lg last:rounded-b-lg ${idx === selectedIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'}`}
-              onMouseDown={(e) => { e.preventDefault(); insertMention(n) }}
-            >
-              {n.data.title}
-            </button>
-          ))}
+        <div
+          className="absolute bg-white dark:bg-[#191919] border border-gray-200 dark:border-[#262626] rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto"
+          style={{ left: menuPos.left, top: menuPos.top, minWidth: '12rem' }}
+        >
+          {mode === 'tag'
+            ? filteredTags.map((tag, idx) => (
+                <button
+                  key={tag}
+                  className={`w-full px-2 py-1.5 text-left text-sm text-gray-900 dark:text-white first:rounded-t-lg last:rounded-b-lg ${idx === selectedIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'}`}
+                  onMouseDown={(e) => { e.preventDefault(); insertTagMention(tag) }}
+                >
+                  {tag}
+                </button>
+              ))
+            : filteredNodes.map((n, idx) => (
+                <button
+                  key={n.id}
+                  className={`w-full px-2 py-1.5 text-left text-sm text-gray-900 dark:text-white first:rounded-t-lg last:rounded-b-lg ${idx === selectedIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'}`}
+                  onMouseDown={(e) => { e.preventDefault(); insertMention(n) }}
+                >
+                  {n.data.title}
+                </button>
+              ))}
         </div>
       )}
     </div>

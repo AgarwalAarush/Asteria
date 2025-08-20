@@ -13,6 +13,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Key, Settings as SettingsIcon, Eye, EyeOff, CheckCircle, XCircle, AlertCircle, Edit2 } from 'lucide-react'
+import { secureSave, secureLoad } from '@/lib/secure-store'
 
 interface SettingsDialogProps {
   open: boolean
@@ -104,30 +105,35 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   })
   const [autoTagWithAI, setAutoTagWithAI] = useState(false)
 
-  // Load API keys and settings from localStorage on mount
+  // Load API keys and settings securely on mount
   useEffect(() => {
     if (open) {
-      const stored = {
-        openai: localStorage.getItem('asteria-openai-key') || '',
-        anthropic: localStorage.getItem('asteria-anthropic-key') || '',
-        gemini: localStorage.getItem('asteria-gemini-key') || '',
-        grok: localStorage.getItem('asteria-grok-key') || '',
-      }
-      setApiKeys(stored)
-      setTempApiKeys(stored)
+      const secret = (localStorage.getItem('asteria-local-secret') || crypto.getRandomValues(new Uint8Array(12)).toString())
+      localStorage.setItem('asteria-local-secret', secret)
+
+      ;(async () => {
+        const stored = {
+          openai: await secureLoad('openai', secret),
+          anthropic: await secureLoad('anthropic', secret),
+          gemini: await secureLoad('gemini', secret),
+          grok: await secureLoad('grok', secret),
+        }
+        setApiKeys(stored)
+        setTempApiKeys(stored)
+        const validations: APIKeyStates = {
+          openai: validateAPIKey('openai', stored.openai),
+          anthropic: validateAPIKey('anthropic', stored.anthropic),
+          gemini: validateAPIKey('gemini', stored.gemini),
+          grok: validateAPIKey('grok', stored.grok),
+        }
+        setValidationStates(validations)
+      })()
       
       // Load auto-tag setting
       const autoTag = localStorage.getItem('asteria-auto-tag-ai') === 'true'
       setAutoTagWithAI(autoTag)
       
-      // Validate loaded keys
-      const validations: APIKeyStates = {
-        openai: validateAPIKey('openai', stored.openai),
-        anthropic: validateAPIKey('anthropic', stored.anthropic),
-        gemini: validateAPIKey('gemini', stored.gemini),
-        grok: validateAPIKey('grok', stored.grok),
-      }
-      setValidationStates(validations)
+      // validations handled in async load above
       
       // Reset editing states
       setEditingKeys({
@@ -173,11 +179,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       setApiKeys(prev => ({ ...prev, [provider]: newKey }))
       setEditingKeys(prev => ({ ...prev, [provider]: false }))
       
-      // Save to localStorage
+      const secret = localStorage.getItem('asteria-local-secret') || ''
       if (newKey.trim()) {
-        localStorage.setItem(`asteria-${provider}-key`, newKey)
+        secureSave(provider, newKey, secret)
       } else {
-        localStorage.removeItem(`asteria-${provider}-key`)
+        localStorage.removeItem(`asteria-sec-key-${provider}`)
       }
     }
   }
@@ -294,7 +300,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             {activeTab === 'api-keys' && (
               <div className="space-y-8">
                 <div>
-                  <h3 className="text-xl font-semibold text-white mb-2">
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
                     API Keys
                   </h3>
                   <p className="text-sm text-gray-400">
@@ -306,7 +312,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   {apiProviders.map((provider) => (
                     <div key={provider.key} className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-white">
+                        <label className="text-sm font-medium text-gray-900 dark:text-white">
                           {provider.label}
                         </label>
                         {getValidationIcon(validationStates[provider.key])}
@@ -318,13 +324,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         <div className="flex items-center justify-between p-3 bg-gray-100 dark:bg-[#262626] rounded-lg border border-gray-200 dark:border-[#404040]">
                           <div className="flex items-center space-x-2">
                             <CheckCircle className="h-4 w-4 text-green-500" />
-                            <span className="text-sm text-gray-300">API key configured</span>
+                            <span className="text-sm text-gray-300">API key configured (encrypted locally)</span>
                           </div>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => startEditingKey(provider.key)}
-                            className="bg-transparent border-[#404040] text-gray-300 hover:bg-[#404040] hover:text-white"
+                            className="bg-transparent border-[#404040] text-gray-700 dark:text-gray-300 hover:bg-[#e5e7eb] dark:hover:bg-[#404040] hover:text-black dark:hover:text-white"
                           >
                             <Edit2 className="h-3 w-3 mr-1" />
                             Change Key
@@ -339,7 +345,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                               placeholder={provider.placeholder}
                               value={editingKeys[provider.key] ? tempApiKeys[provider.key] : apiKeys[provider.key]}
                               onChange={(e) => handleApiKeyChange(provider.key, e.target.value)}
-                              className={`pr-12 bg-[#191919] border-[#262626] text-white placeholder:text-gray-500 focus:border-[#404040] focus:ring-0 transition-colors ${
+                              className={`pr-12 bg-white dark:bg-[#191919] border-gray-300 dark:border-[#262626] text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-gray-400 dark:focus:border-[#404040] focus:ring-0 transition-colors ${
                                 validationStates[provider.key].error ? 'border-red-500' : 
                                 validationStates[provider.key].isValid ? 'border-green-500' : ''
                               }`}
@@ -347,7 +353,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                             <button
                               type="button"
                               onClick={() => toggleKeyVisibility(provider.key)}
-                              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white transition-colors"
+                              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
                             >
                               {showKeys[provider.key] ? (
                                 <EyeOff className="h-4 w-4" />
@@ -364,7 +370,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                                 size="sm"
                                 onClick={() => saveApiKey(provider.key)}
                                 disabled={validationStates[provider.key].error !== undefined && tempApiKeys[provider.key].trim() !== ''}
-                                className="bg-white text-black hover:bg-gray-200"
+                                className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
                               >
                                 Save
                               </Button>
@@ -372,7 +378,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => cancelEditingKey(provider.key)}
-                                className="bg-transparent border-[#404040] text-gray-300 hover:bg-[#404040] hover:text-white"
+                                className="bg-transparent border-gray-300 dark:border-[#404040] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#404040] hover:text-black dark:hover:text-white"
                               >
                                 Cancel
                               </Button>
@@ -402,7 +408,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   ))}
                 </div>
 
-                <Separator className="bg-[#262626]" />
+                <Separator className="bg-gray-200 dark:bg-[#262626]" />
 
                 <div className="flex items-center justify-between pt-4">
                   <div className="text-sm text-gray-400">
@@ -422,7 +428,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             {activeTab === 'general' && (
               <div className="space-y-8">
                 <div>
-                  <h3 className="text-xl font-semibold text-white mb-2">
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
                     General Settings
                   </h3>
                   <p className="text-sm text-gray-400">
@@ -432,11 +438,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 
                 <div className="space-y-6">
                   {/* Auto-tag with AI */}
-                  <div className="rounded-lg border border-[#262626] p-6">
+                  <div className="rounded-lg border border-gray-200 dark:border-[#262626] p-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="text-sm font-medium text-white">Auto-tag with AI</h4>
-                        <p className="text-xs text-gray-400">Automatically tag ideas/nodes using your configured AI provider</p>
+                        <h4 className="text-sm font-medium text-gray-900 dark:text-white">Auto-tag with AI</h4>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">Automatically tag ideas/nodes using your configured AI provider</p>
                       </div>
                       <Switch
                         checked={autoTagWithAI}
@@ -447,31 +453,31 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       />
                     </div>
                   </div>
-                  <div className="rounded-lg border border-[#262626] p-6">
+                  <div className="rounded-lg border border-gray-200 dark:border-[#262626] p-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="text-sm font-medium text-white">Theme</h4>
-                        <p className="text-xs text-gray-400">Choose your preferred theme</p>
+                        <h4 className="text-sm font-medium text-gray-900 dark:text-white">Theme</h4>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">Choose your preferred theme</p>
                       </div>
                       <div className="text-sm text-gray-400">Auto-detect</div>
                     </div>
                   </div>
                   
-                  <div className="rounded-lg border border-[#262626] p-6">
+                  <div className="rounded-lg border border-gray-200 dark:border-[#262626] p-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="text-sm font-medium text-white">Auto-save</h4>
-                        <p className="text-xs text-gray-400">Automatically save changes to your graph</p>
+                        <h4 className="text-sm font-medium text-gray-900 dark:text-white">Auto-save</h4>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">Automatically save changes to your graph</p>
                       </div>
                       <div className="text-sm text-gray-400">Enabled</div>
                     </div>
                   </div>
                   
-                  <div className="rounded-lg border border-[#262626] p-6">
+                  <div className="rounded-lg border border-gray-200 dark:border-[#262626] p-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="text-sm font-medium text-white">Export format</h4>
-                        <p className="text-xs text-gray-400">Default format for graph exports</p>
+                        <h4 className="text-sm font-medium text-gray-900 dark:text-white">Export format</h4>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">Default format for graph exports</p>
                       </div>
                       <div className="text-sm text-gray-400">JSON</div>
                     </div>
