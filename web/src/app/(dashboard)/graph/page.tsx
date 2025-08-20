@@ -6,8 +6,11 @@ import { GraphCanvasProvider } from '@/components/GraphCanvas'
 import { AIOverlay } from '@/components/unified-sidebar'
 import { NodeEditPanel } from '@/components/NodeEditPanel'
 import { AuthModal } from '@/components/auth/AuthModal'
+import { SettingsDialog } from '@/components/SettingsDialog'
 import { Button } from '@/components/ui/button'
 import { Download, Upload } from 'lucide-react'
+import { useAutoSave, useGraphData } from '@/hooks/useAutoSave'
+import { DatabaseService } from '@/lib/database'
 
 
 import {
@@ -117,8 +120,20 @@ const sampleEdges: Edge<ReactFlowEdgeDataType>[] = [
 
 export default function GraphPage() {
   const { user, loading, supabase } = useSupabase()
-  const [nodes, setNodes] = useState<Node<ReactFlowNodeDataType>[]>(sampleNodes)
-  const [edges, setEdges] = useState<Edge<ReactFlowEdgeDataType>[]>(sampleEdges)
+  
+  // Load data from database on mount
+  const { nodes: loadedNodes, edges: loadedEdges, isLoading: isLoadingData, error: loadError, refresh: refreshData } = useGraphData()
+  
+  // Use loaded data or fallback to sample data
+  const [nodes, setNodes] = useState<Node<ReactFlowNodeDataType>[]>(loadedNodes.length > 0 ? loadedNodes : sampleNodes)
+  const [edges, setEdges] = useState<Edge<ReactFlowEdgeDataType>[]>(loadedEdges.length > 0 ? loadedEdges : sampleEdges)
+  
+  // Auto-save changes to database
+  const { saveNow, isSaving } = useAutoSave(nodes, edges, {
+    onSaveStart: () => console.log('Auto-saving...'),
+    onSaveEnd: () => console.log('Auto-save complete'),
+    onSaveError: (error) => console.error('Auto-save failed:', error)
+  })
   const [selectedNodes, setSelectedNodes] = useState<Node<ReactFlowNodeDataType>[]>([])
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [isDemoMode, setIsDemoMode] = useState(false)
@@ -127,6 +142,7 @@ export default function GraphPage() {
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false)
   const [isAddingNewNode, setIsAddingNewNode] = useState(false)
   const [isAIFocused, setIsAIFocused] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [layoutFunctions, setLayoutFunctions] = useState<{
     relayoutAll: () => void
     relayoutFrom: (nodeId: string) => void
@@ -139,75 +155,24 @@ export default function GraphPage() {
       setIsDemoMode(true)
     }
   }, [])
-
-  // Load data from Supabase when user is authenticated
+  
+  // Update local state when data loads from database
   useEffect(() => {
-    const loadDataFromSupabase = async () => {
-      if (!user || isDemoMode || loading) return
-
-      try {
-        // Load nodes
-        const { data: nodesData, error: nodesError } = await supabase
-          .from('Node')
-          .select('*')
-          .eq('spaceId', 'default-space')
-
-        if (nodesError) {
-          console.error('Error loading nodes:', nodesError)
-        } else if (nodesData && nodesData.length > 0) {
-          const loadedNodes: Node<ReactFlowNodeDataType>[] = nodesData.map((dbNode: any) => ({
-            id: dbNode.id,
-            type: 'ideaNode',
-            position: dbNode.metadata?.position || { x: 0, y: 0 },
-            data: {
-              id: dbNode.id,
-              title: dbNode.title || 'Untitled',
-              kind: dbNode.kind || 'note',
-              body: dbNode.body || '',
-              tags: dbNode.metadata?.tags || [],
-              scorePainkiller: dbNode.scorePainkiller,
-              scoreFounderFit: dbNode.scoreFounderFit,
-              scoreTiming: dbNode.scoreTiming,
-              scoreMoat: dbNode.scoreMoat,
-              scorePracticality: dbNode.scorePracticality,
-              createdAt: dbNode.createdAt,
-              updatedAt: dbNode.updatedAt,
-            }
-          }))
-          setNodes(loadedNodes)
-        }
-
-        // Load edges
-        const { data: edgesData, error: edgesError } = await supabase
-          .from('Edge')
-          .select('*')
-          .eq('spaceId', 'default-space')
-
-        if (edgesError) {
-          console.error('Error loading edges:', edgesError)
-        } else if (edgesData && edgesData.length > 0) {
-          const loadedEdges: Edge<ReactFlowEdgeDataType>[] = edgesData.map((dbEdge: any) => ({
-            id: dbEdge.id,
-            source: dbEdge.sourceId,
-            target: dbEdge.targetId,
-            type: 'relationEdge',
-            data: {
-              id: dbEdge.id,
-              source: dbEdge.sourceId,
-              target: dbEdge.targetId,
-              relation: dbEdge.relation || 'related',
-              weight: dbEdge.weight || 0.5,
-            }
-          }))
-          setEdges(loadedEdges)
-        }
-      } catch (error) {
-        console.error('Error loading data from Supabase:', error)
-      }
+    if (!isLoadingData && loadedNodes.length > 0) {
+      setNodes(loadedNodes)
     }
+    if (!isLoadingData && loadedEdges.length > 0) {
+      setEdges(loadedEdges)
+    }
+    
+    // Trigger layout after data loads
+    if (!isLoadingData && loadedNodes.length > 0 && layoutFunctions) {
+      setTimeout(() => {
+        layoutFunctions.relayoutAll()
+      }, 100)
+    }
+  }, [loadedNodes, loadedEdges, isLoadingData, layoutFunctions])
 
-    loadDataFromSupabase()
-  }, [user, isDemoMode, loading, supabase])
 
   // Handle node selection (with multi-select support)
   const handleNodeClick = useCallback((node: Node<ReactFlowNodeDataType>, event?: React.MouseEvent) => {
@@ -234,88 +199,25 @@ export default function GraphPage() {
     setIsAddingNewNode(false)
   }, [])
 
-  // Save node to Supabase
-  const saveNodeToSupabase = async (nodeData: ReactFlowNodeDataType, position: { x: number; y: number }) => {
-    if (!user || isDemoMode) return
-
-    try {
-      const { data, error } = await supabase
-        .from('Node')
-        .upsert({
-          id: nodeData.id,
-          spaceId: 'default-space', // TODO: Implement proper space management
-          title: nodeData.title,
-          kind: nodeData.kind,
-          body: nodeData.body || '',
-          scorePainkiller: nodeData.scorePainkiller,
-          scoreFounderFit: nodeData.scoreFounderFit,
-          scoreTiming: nodeData.scoreTiming,
-          scoreMoat: nodeData.scoreMoat,
-          scorePracticality: nodeData.scorePracticality,
-          // Store position and tags as metadata since they're not in the schema
-          metadata: { 
-            position,
-            tags: nodeData.tags || []
-          }
-        })
-        .select()
-
-      if (error) {
-        console.error('Error saving node:', error)
-      }
-    } catch (error) {
-      console.error('Error saving node:', error)
-    }
-  }
-
-  // Save edge to Supabase
-  const saveEdgeToSupabase = async (edgeData: ReactFlowEdgeDataType) => {
-    if (!user || isDemoMode) return
-
-    try {
-      const { data, error } = await supabase
-        .from('Edge')
-        .upsert({
-          id: edgeData.id,
-          spaceId: 'default-space', // TODO: Implement proper space management
-          sourceId: edgeData.source,
-          targetId: edgeData.target,
-          relation: edgeData.relation,
-          weight: edgeData.weight
-        })
-        .select()
-
-      if (error) {
-        console.error('Error saving edge:', error)
-      }
-    } catch (error) {
-      console.error('Error saving edge:', error)
-    }
-  }
 
   // Handle node updates
   const handleNodeUpdate = async (nodeId: string, updates: Partial<ReactFlowNodeDataType>) => {
-    // Update local state
+    // Update local state - auto-save will handle database persistence
     setNodes(prevNodes => 
       prevNodes.map(node => {
         if (node.id === nodeId) {
-          const updatedNode = { ...node, data: { ...node.data, ...updates } }
-          // Save to Supabase
-          saveNodeToSupabase(updatedNode.data, updatedNode.position)
+          const updatedNode = { ...node, data: { ...node.data, ...updates, updatedAt: new Date().toISOString() } }
           return updatedNode
         }
         return node
       })
     )
     
-    // Don't update editingNode to avoid triggering form reset
-    // The node data will be updated in the nodes array and that's sufficient
-    
     // Update selected nodes if any match
     setSelectedNodes(prevSelected => 
       prevSelected.map(node => 
         node.id === nodeId 
-          ? { ...node, data: { ...node.data, ...updates } }
+          ? { ...node, data: { ...node.data, ...updates, updatedAt: new Date().toISOString() } }
           : node
       )
     )
@@ -383,9 +285,6 @@ export default function GraphPage() {
     }
 
     setNodes((nds) => [...nds, newNode])
-    
-    // Save to Supabase
-    saveNodeToSupabase(newNode.data, newNode.position)
 
     // Check if this node has a pending parent (from plus button)
     const pendingParentId = (editingNode as any)?.pendingParentId
@@ -407,7 +306,6 @@ export default function GraphPage() {
       }
       
       setEdges((eds) => [...eds, newEdge])
-      saveEdgeToSupabase(newEdge.data)
     }
     
     // Apply layout after node (and possibly edge) is added
@@ -421,7 +319,8 @@ export default function GraphPage() {
   }
 
   // Handle deleting nodes
-  const handleDeleteNode = useCallback((nodeId: string) => {
+  const handleDeleteNode = useCallback(async (nodeId: string) => {
+    // Optimistically update local state first for better UX
     setNodes((nds) => nds.filter(n => n.id !== nodeId))
     setEdges((eds) => eds.filter(e => e.source !== nodeId && e.target !== nodeId))
     
@@ -429,6 +328,15 @@ export default function GraphPage() {
     if (editingNode?.id === nodeId) {
       setIsEditPanelOpen(false)
       setEditingNode(null)
+    }
+
+    // Delete from database in background
+    try {
+      await DatabaseService.deleteNode(nodeId)
+    } catch (error) {
+      console.error('Failed to delete node from database:', error)
+      // If database delete fails, we could revert the optimistic update here
+      // but for now we'll just log the error
     }
 
     // Apply layout after deletion
@@ -506,9 +414,6 @@ export default function GraphPage() {
     }
 
     setEdges((eds) => [...eds, newEdge])
-    
-    // Save edge to Supabase
-    saveEdgeToSupabase(newEdge.data)
   }
 
   // Handle removing parent relationship
@@ -519,22 +424,16 @@ export default function GraphPage() {
     )
     
     if (edgeToRemove) {
+      // Optimistically update local state first for better UX
       setEdges(prevEdges => prevEdges.filter(e => e.id !== edgeToRemove.id))
       
-      // Remove from Supabase if authenticated
-      if (user && !isDemoMode) {
-        try {
-          const { error } = await supabase
-            .from('Edge')
-            .delete()
-            .eq('id', edgeToRemove.data.id)
-          
-          if (error) {
-            console.error('Error deleting edge:', error)
-          }
-        } catch (error) {
-          console.error('Error deleting edge:', error)
-        }
+      // Delete from database in background
+      try {
+        await DatabaseService.deleteEdge(edgeToRemove.id)
+      } catch (error) {
+        console.error('Error deleting edge from database:', error)
+        // If database delete fails, we could revert the optimistic update here
+        // but for now we'll just log the error
       }
     }
   }
@@ -660,11 +559,7 @@ export default function GraphPage() {
           setNodes(importedNodes)
           setEdges(importedEdges)
 
-          // Save imported data to Supabase if authenticated
-          if (user && !isDemoMode) {
-            importedNodes.forEach(node => saveNodeToSupabase(node.data, node.position))
-            importedEdges.forEach(edge => saveEdgeToSupabase(edge.data))
-          }
+          // Auto-save will handle persistence
 
           alert(`Successfully imported ${importedNodes.length} nodes and ${importedEdges.length} edges.`)
         } catch (error) {
@@ -677,12 +572,18 @@ export default function GraphPage() {
     input.click()
   }
 
-  if (loading) {
+  if (loading || isLoadingData) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-lg">Loading...</div>
       </div>
     )
+  }
+  
+  // Show error if data failed to load
+  if (loadError) {
+    console.error('Failed to load graph data:', loadError)
+    // Continue with sample data if database fails
   }
 
   // Check if Supabase is configured
@@ -841,6 +742,15 @@ export default function GraphPage() {
                   </ul>
                 </NavigationMenuContent>
               </NavigationMenuItem>
+
+              <NavigationMenuItem>
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className={navigationMenuTriggerStyle()}
+                >
+                  Settings
+                </button>
+              </NavigationMenuItem>
             </NavigationMenuList>
           </NavigationMenu>
 
@@ -888,7 +798,7 @@ export default function GraphPage() {
 
       {/* AI Assistant Floating Window */}
       {isAIAssistantOpen && (
-        <div className="fixed top-16 right-4 w-96 h-[calc(100vh-5rem)] bg-white dark:bg-black border border-gray-200 dark:border-[#191919] rounded-xl shadow-lg flex flex-col z-50">
+        <div className="fixed top-16 right-4 w-72 h-[calc(100vh-5rem)] bg-white dark:bg-black border border-gray-200 dark:border-[#191919] rounded-xl shadow-lg flex flex-col z-50">
           <div className="p-4 border-b border-gray-200 dark:border-[#191919] flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">AI Assistant</h2>
             <button
@@ -933,6 +843,12 @@ export default function GraphPage() {
         onRemoveParent={handleRemoveParent}
         isAddingNewNode={isAddingNewNode}
         edges={edges.map(e => ({ source: e.source, target: e.target }))}
+      />
+
+      {/* Settings Dialog */}
+      <SettingsDialog 
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
       />
     </div>
   )

@@ -177,6 +177,7 @@ export function AIOverlay({
   edges,
   selectedNodes,
   onAIAction,
+  onFocusChange,
 }: AISidebarProps) {
   const [activeAIMode, setActiveAIMode] = useState<AIModeType>('suggest')
   const [isLoading, setIsLoading] = useState(false)

@@ -129,4 +129,25 @@ Asteria follows a modern, minimalist design approach inspired by shadcn/ui compo
 - Real-time theme switching capability
 - Consistent theme application across components
 
+## Settings & Configuration
+
+### Settings Pages
+- **Layout**: Use SidebarProvider with SidebarInset for main content
+- **Navigation**: Left sidebar with menu items using SidebarMenu components
+- **Content**: Right-side content area with proper spacing and form layouts
+- **Sections**: Clearly separated sections with SidebarSeparator components
+
+### Form Inputs
+- **API Keys**: Password-type inputs with toggle visibility buttons
+- **Labels**: Clear, descriptive labels using proper hierarchy
+- **Validation**: Real-time feedback with appropriate error states
+- **Save Actions**: Prominent save buttons with loading states
+
+### Sidebar Components
+- **Structure**: SidebarProvider wraps the entire layout
+- **Content**: SidebarContent contains all menu items and groups
+- **Groups**: SidebarGroup with SidebarGroupLabel for section organization
+- **Items**: SidebarMenuItem with SidebarMenuButton for navigation
+- **States**: Active states clearly indicated with data-active attribute
+
 This style guide ensures consistency across the Asteria application while maintaining the modern, professional aesthetic established by shadcn/ui components.

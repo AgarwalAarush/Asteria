@@ -1,0 +1,92 @@
+import { ReactFlowNodeDataType, ReactFlowEdgeDataType } from './schemas'
+import { Node as RFNode, Edge as RFEdge } from 'reactflow'
+
+// Types for React Flow integration
+export type ReactFlowNode = RFNode<ReactFlowNodeDataType>
+export type ReactFlowEdge = RFEdge<ReactFlowEdgeDataType>
+
+// Database service class using API calls
+export class DatabaseService {
+  // Load all nodes and edges from database
+  static async loadGraphData(): Promise<{ nodes: ReactFlowNode[], edges: ReactFlowEdge[] }> {
+    try {
+      const response = await fetch('/api/graph')
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Load failed with status:', response.status, 'Error:', errorText)
+        throw new Error(`Failed to load graph data: ${response.status} ${errorText}`)
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Error loading graph data:', error)
+      return { nodes: [], edges: [] }
+    }
+  }
+
+  // Save multiple nodes and edges efficiently
+  static async saveNodes(nodes: ReactFlowNode[]): Promise<void> {
+    // We'll batch save nodes with edges
+  }
+
+  static async saveEdges(edges: ReactFlowEdge[]): Promise<void> {
+    // We'll batch save edges with nodes
+  }
+
+  // Save all graph data (nodes and edges) in a single call
+  static async saveGraphData(nodes: ReactFlowNode[], edges: ReactFlowEdge[]): Promise<void> {
+    try {
+      const response = await fetch('/api/graph', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nodes, edges }),
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Save failed with status:', response.status, 'Error:', errorText)
+        throw new Error(`Failed to save graph data: ${response.status} ${errorText}`)
+      }
+    } catch (error) {
+      console.error('Error saving graph data:', error)
+      throw error
+    }
+  }
+
+  // Delete a node and its associated edges and tags
+  static async deleteNode(nodeId: string): Promise<void> {
+    try {
+      const response = await fetch(`/api/nodes/${nodeId}`, {
+        method: 'DELETE',
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Delete node failed with status:', response.status, 'Error:', errorText)
+        throw new Error(`Failed to delete node: ${response.status} ${errorText}`)
+      }
+    } catch (error) {
+      console.error('Error deleting node:', error)
+      throw error
+    }
+  }
+
+  // Delete an edge
+  static async deleteEdge(edgeId: string): Promise<void> {
+    try {
+      const response = await fetch(`/api/edges/${edgeId}`, {
+        method: 'DELETE',
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Delete edge failed with status:', response.status, 'Error:', errorText)
+        throw new Error(`Failed to delete edge: ${response.status} ${errorText}`)
+      }
+    } catch (error) {
+      console.error('Error deleting edge:', error)
+      throw error
+    }
+  }
+}

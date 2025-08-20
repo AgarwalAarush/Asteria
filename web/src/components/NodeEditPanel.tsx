@@ -81,10 +81,24 @@ export function NodeEditPanel({
 
   // Get current parent nodes (memoized to prevent infinite loops)
   const currentParents = useMemo(() => {
-    return node?.id ? allNodes.filter(n => 
+    if (!node?.id) return []
+    
+    // Get parents from existing edges
+    const edgeParents = allNodes.filter(n => 
       edges.some(e => e.source === n.id && e.target === node.id)
-    ) : []
-  }, [node?.id, allNodes, edges])
+    )
+    
+    // For draft nodes with pending parent, also include the pending parent
+    const pendingParentId = (node as any).pendingParentId
+    if (pendingParentId && isAddingNewNode) {
+      const pendingParent = allNodes.find(n => n.id === pendingParentId)
+      if (pendingParent && !edgeParents.some(p => p.id === pendingParentId)) {
+        return [...edgeParents, pendingParent]
+      }
+    }
+    
+    return edgeParents
+  }, [node?.id, node, allNodes, edges, isAddingNewNode])
 
   // Get all existing tags across all nodes (memoized to prevent infinite loops)
   const allExistingTags = useMemo(() => {
