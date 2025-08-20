@@ -15,12 +15,15 @@ import ReactFlow, {
   ReactFlowProvider,
   useReactFlow,
   NodeProps,
+  applyNodeChanges,
+  applyEdgeChanges,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
 import { ReactFlowNodeDataType, ReactFlowEdgeDataType, NodeKind, Relation } from '@/lib/schemas'
 import { IdeaNodeCard } from './nodes/IdeaNodeCard'
 import { RelationEdge } from './edges/RelationEdge'
+import { useAutoLayout } from '@/hooks/useAutoLayout'
 
 // Factory function to create node with custom props
 const createIdeaNodeWithProps = (onAddChild?: (parentId: string) => void) => {
@@ -50,6 +53,9 @@ interface GraphCanvasProps {
   onConnect?: (connection: Connection) => void
   onAddNode?: (node: Node<ReactFlowNodeDataType>) => void
   onAddNodeWithParent?: (parentId: string) => void
+  onDeleteNode?: (nodeId: string) => void
+  selectedNodes?: Array<Node<ReactFlowNodeDataType>>
+  onLayoutReady?: (relayoutAll: () => void, relayoutFrom: (nodeId: string) => void) => void
   className?: string
   isEditPanelOpen?: boolean
 }
@@ -101,6 +107,25 @@ function useAddNodeHotkey(wrapperRef: React.RefObject<HTMLDivElement>, onAddNode
   }, [project, onAddNode, wrapperRef, disabled])
 }
 
+// Hook for deleting nodes with "D" key
+function useDeleteNodeHotkey(onDeleteNode?: (nodeId: string) => void, selectedNodes?: Array<Node<ReactFlowNodeDataType>>, disabled?: boolean) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'd' || !onDeleteNode || disabled) return
+      if (!selectedNodes || selectedNodes.length === 0) return
+      
+      // Delete the first selected node
+      onDeleteNode(selectedNodes[0].id)
+    }
+
+    window.addEventListener('keydown', onKey)
+    
+    return () => {
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onDeleteNode, selectedNodes, disabled])
+}
+
 export function GraphCanvas({
   nodes: initialNodes = [],
   edges: initialEdges = [],
@@ -112,47 +137,56 @@ export function GraphCanvas({
   onConnect,
   onAddNode,
   onAddNodeWithParent,
+  onDeleteNode,
+  selectedNodes = [],
+  onLayoutReady,
   className = '',
   isEditPanelOpen = false,
 }: GraphCanvasProps) {
-  const [nodes, setNodes, onNodesStateChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesStateChange] = useEdgesState(initialEdges)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const { project } = useReactFlow()
   const [counter, setCounter] = useState(1)
+  const { relayoutAll, relayoutFrom } = useAutoLayout()
 
-  // Use the hotkey hook
+  // Expose layout functions to parent
+  useEffect(() => {
+    if (onLayoutReady) {
+      onLayoutReady(relayoutAll, relayoutFrom)
+    }
+  }, [onLayoutReady, relayoutAll, relayoutFrom])
+
+  // Use the hotkey hooks
   useAddNodeHotkey(wrapperRef, onAddNode, isEditPanelOpen)
+  useDeleteNodeHotkey(onDeleteNode, selectedNodes, isEditPanelOpen)
 
-  // Create node types with custom props
-  const nodeTypes: NodeTypes = useMemo(() => ({
-    ideaNode: createIdeaNodeWithProps(onAddNodeWithParent),
-  }), [onAddNodeWithParent])
+  // Create node types with custom props, memoized with stable dependency
+  const nodeTypes: NodeTypes = useMemo(() => 
+    createNodeTypes(onAddNodeWithParent), 
+    [onAddNodeWithParent]
+  )
 
-  // Handle node changes
+  // Handle node changes - use external state management only
   const handleNodesChange = useCallback(
     (changes: any) => {
-      onNodesStateChange(changes)
       if (onNodesChange) {
-        // Get updated nodes after the change
-        const updatedNodes = nodes // This would need proper change application
+        // Apply changes to the current nodes and pass to parent
+        const updatedNodes = applyNodeChanges(changes, initialNodes)
         onNodesChange(updatedNodes)
       }
     },
-    [nodes, onNodesChange, onNodesStateChange]
+    [initialNodes, onNodesChange]
   )
 
-  // Handle edge changes
+  // Handle edge changes - use external state management only
   const handleEdgesChange = useCallback(
     (changes: any) => {
-      onEdgesStateChange(changes)
       if (onEdgesChange) {
-        // Get updated edges after the change
-        const updatedEdges = edges // This would need proper change application
+        // Apply changes to the current edges and pass to parent
+        const updatedEdges = applyEdgeChanges(changes, initialEdges)
         onEdgesChange(updatedEdges)
       }
     },
-    [edges, onEdgesChange, onEdgesStateChange]
+    [initialEdges, onEdgesChange]
   )
 
   // Handle new connections
@@ -160,7 +194,7 @@ export function GraphCanvas({
     (connection: Connection) => {
       if (onConnect) {
         onConnect(connection)
-      } else {
+      } else if (onEdgesChange) {
         // Default behavior: add edge with 'related' relation
         const newEdge: Edge<ReactFlowEdgeDataType> = {
           id: `edge-${connection.source}-${connection.target}`,
@@ -175,10 +209,10 @@ export function GraphCanvas({
             weight: null,
           },
         }
-        setEdges((eds) => addEdge(newEdge, eds))
+        onEdgesChange(addEdge(newEdge, initialEdges))
       }
     },
-    [onConnect, setEdges]
+    [onConnect, onEdgesChange, initialEdges]
   )
 
   // Handle node clicks
@@ -250,8 +284,8 @@ export function GraphCanvas({
   return (
     <div ref={wrapperRef} className={`w-full h-full ${className}`}>
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={initialNodes}
+        edges={initialEdges}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable

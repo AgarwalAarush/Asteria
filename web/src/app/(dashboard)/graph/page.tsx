@@ -126,6 +126,10 @@ export default function GraphPage() {
   const [isEditPanelOpen, setIsEditPanelOpen] = useState(false)
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false)
   const [isAddingNewNode, setIsAddingNewNode] = useState(false)
+  const [layoutFunctions, setLayoutFunctions] = useState<{
+    relayoutAll: () => void
+    relayoutFrom: (nodeId: string) => void
+  } | null>(null)
 
   // Check for demo mode in localStorage - MUST be at top level
   useEffect(() => {
@@ -341,6 +345,11 @@ export default function GraphPage() {
     setEdges((eds) => [...eds, newEdge])
   }
 
+  // Handle layout ready callback
+  const handleLayoutReady = useCallback((relayoutAll: () => void, relayoutFrom: (nodeId: string) => void) => {
+    setLayoutFunctions({ relayoutAll, relayoutFrom })
+  }, [])
+
   // Handle adding new nodes
   const handleAddNode = (newNode: Node<ReactFlowNodeDataType>) => {
     setNodes((nds) => [...nds, newNode])
@@ -348,13 +357,35 @@ export default function GraphPage() {
     // Save to Supabase
     saveNodeToSupabase(newNode.data, newNode.position)
     
-    // Open edit panel for the new node
+    // Apply layout after node is added
     setTimeout(() => {
+      if (layoutFunctions) {
+        layoutFunctions.relayoutAll()
+      }
       setEditingNode(newNode)
       setIsEditPanelOpen(true)
       setIsAddingNewNode(true)
     }, 0)
   }
+
+  // Handle deleting nodes
+  const handleDeleteNode = useCallback((nodeId: string) => {
+    setNodes((nds) => nds.filter(n => n.id !== nodeId))
+    setEdges((eds) => eds.filter(e => e.source !== nodeId && e.target !== nodeId))
+    
+    // Close edit panel if deleting the currently edited node
+    if (editingNode?.id === nodeId) {
+      setIsEditPanelOpen(false)
+      setEditingNode(null)
+    }
+
+    // Apply layout after deletion
+    setTimeout(() => {
+      if (layoutFunctions) {
+        layoutFunctions.relayoutAll()
+      }
+    }, 0)
+  }, [editingNode?.id, layoutFunctions])
 
   // Handle adding linked nodes from radial actions
   const handleAddLinkedNode = (fromNodeId: string, kind: NodeKind, relation: Relation) => {
@@ -466,31 +497,11 @@ export default function GraphPage() {
       const parentNode = currentNodes.find(n => n.id === parentId)
       if (!parentNode) return currentNodes
 
-      // Calculate optimal position for new child (left-to-right tree layout)
-      const baseOffset = 400 // Increased spacing for better visibility
-      const verticalSpacing = 200 // Increased vertical spacing
-      
-      // Find existing children of this parent
-      const existingChildren = currentNodes.filter(node => 
-        edges.some(edge => edge.source === parentNode.id && edge.target === node.id)
-      )
-      
-      // Calculate the next position based on existing children
-      const childIndex = existingChildren.length
-      
-      // For left-to-right tree layout:
-      // - Children go to the right of parent
-      // - Vertical spacing distributes children evenly
-      const yOffset = childIndex * verticalSpacing - (existingChildren.length * verticalSpacing) / 2
-      
-      const position = {
-        x: parentNode.position.x + baseOffset,
-        y: parentNode.position.y + yOffset
-      }
+      // Create new node with temporary position (will be repositioned by layout)
       const newNode: Node<ReactFlowNodeDataType> = {
         id: newNodeId,
         type: 'ideaNode',
-        position,
+        position: { x: 0, y: 0 }, // Temporary position, layout will fix this
         data: {
           id: newNodeId,
           title: 'Add Node',
@@ -504,13 +515,6 @@ export default function GraphPage() {
 
       // Save node to Supabase
       saveNodeToSupabase(newNode.data, newNode.position)
-
-      // Set the editing node for the panel (using setTimeout to ensure state update completes)
-      setTimeout(() => {
-        setEditingNode(newNode)
-        setIsEditPanelOpen(true)
-        setIsAddingNewNode(true)
-      }, 0)
 
       return [...currentNodes, newNode]
     })
@@ -534,7 +538,24 @@ export default function GraphPage() {
     
     // Save edge to Supabase
     saveEdgeToSupabase(newEdge.data)
-  }, [edges])
+
+    // Apply layout after both node and edge are added, then open edit panel
+    setTimeout(() => {
+      if (layoutFunctions) {
+        layoutFunctions.relayoutFrom(newNodeId)
+      }
+      // Find the created node and set it for editing
+      setNodes((currentNodes) => {
+        const createdNode = currentNodes.find(n => n.id === newNodeId)
+        if (createdNode) {
+          setEditingNode(createdNode)
+          setIsEditPanelOpen(true)
+          setIsAddingNewNode(true)
+        }
+        return currentNodes
+      })
+    }, 100) // Small delay to ensure both state updates complete
+  }, [edges, layoutFunctions])
 
   // Export graph data
   const handleExport = () => {
@@ -842,6 +863,9 @@ export default function GraphPage() {
               onConnect={handleConnect}
               onAddNode={handleAddNode}
               onAddNodeWithParent={handleAddNodeWithParent}
+              onDeleteNode={handleDeleteNode}
+              selectedNodes={selectedNodes}
+              onLayoutReady={handleLayoutReady}
               isEditPanelOpen={isEditPanelOpen}
               className="w-full h-full"
             />
@@ -886,6 +910,7 @@ export default function GraphPage() {
           setIsAddingNewNode(false)
         }}
         onSave={handleNodeUpdate}
+        onDelete={handleDeleteNode}
         allNodes={nodes}
         selectedNodes={selectedNodes}
         onAddParent={handleAddParent}

@@ -19,6 +19,7 @@ interface NodeEditPanelProps {
   isOpen: boolean
   onClose: () => void
   onSave: (nodeId: string, updates: Partial<ReactFlowNodeDataType>) => void
+  onDelete?: (nodeId: string) => void
   allNodes: Node<ReactFlowNodeDataType>[]
   selectedNodes: Node<ReactFlowNodeDataType>[]
   onAddParent: (childId: string, parentId: string) => void
@@ -32,6 +33,7 @@ export function NodeEditPanel({
   isOpen, 
   onClose, 
   onSave, 
+  onDelete,
   allNodes,
   selectedNodes,
   onAddParent,
@@ -128,6 +130,13 @@ export function NodeEditPanel({
   const handleSave = () => {
     if (node) {
       onSave(node.id, formData)
+      onClose()
+    }
+  }
+
+  const handleDelete = () => {
+    if (node && onDelete && !isAddingNewNode) {
+      onDelete(node.id)
       onClose()
     }
   }
@@ -510,20 +519,31 @@ export function NodeEditPanel({
       </div>
 
       <div className="p-4 border-t border-gray-200 dark:border-[#191919]">
-        <div className="flex gap-2">
-          <Button 
-            onClick={handleSave}
-            className="flex-1 bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
-          >
-            {isAddingNewNode ? 'Add Node' : 'Save Changes'}
-          </Button>
-          <Button 
-            onClick={onClose}
-            variant="outline"
-            className="border-gray-200 dark:border-[#191919] text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
-          >
-            Cancel
-          </Button>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Button 
+              onClick={handleSave}
+              className="flex-1 bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
+            >
+              {isAddingNewNode ? 'Add Node' : 'Save Changes'}
+            </Button>
+            <Button 
+              onClick={onClose}
+              variant="outline"
+              className="border-gray-200 dark:border-[#191919] text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              Cancel
+            </Button>
+          </div>
+          {!isAddingNewNode && onDelete && (
+            <Button 
+              onClick={handleDelete}
+              variant="outline"
+              className="w-full border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+            >
+              Delete Node
+            </Button>
+          )}
         </div>
       </div>
     </div>
