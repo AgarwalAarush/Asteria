@@ -135,7 +135,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       
       // validations handled in async load above
       
-      // Reset editing states
+      // Reset editing states (not used anymore, inputs are always editable)
       setEditingKeys({
         openai: false,
         anthropic: false,
@@ -182,9 +182,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       const secret = localStorage.getItem('asteria-local-secret') || ''
       if (newKey.trim()) {
         secureSave(provider, newKey, secret)
+        // legacy plaintext fallback for compatibility
+        localStorage.setItem(`asteria-${provider}-key`, newKey)
       } else {
         localStorage.removeItem(`asteria-sec-key-${provider}`)
+        localStorage.removeItem(`asteria-${provider}-key`)
       }
+      // notify other components to refresh provider lists
+      window.dispatchEvent(new Event('asteria-keys-updated'))
     }
   }
 
@@ -197,14 +202,23 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     try {
       // Save auto-tag setting
       localStorage.setItem('asteria-auto-tag-ai', autoTagWithAI.toString())
-      
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      alert('Settings saved successfully!')
+      // Persist all API keys (valid ones) or clear when empty
+      const secret = localStorage.getItem('asteria-local-secret') || ''
+      const providers = Object.keys(tempApiKeys) as Array<keyof typeof tempApiKeys>
+      for (const p of providers) {
+        const value = (tempApiKeys[p] || '').trim()
+        const validation = validateAPIKey(p, value)
+        if (value === '') {
+          localStorage.removeItem(`asteria-sec-key-${p}`)
+        } else if (validation.isValid) {
+          await secureSave(p, value, secret)
+        }
+      }
+      setApiKeys({ ...tempApiKeys })
+      // notify listeners to refresh
+      window.dispatchEvent(new Event('asteria-keys-updated'))
     } catch (error) {
       console.error('Error saving settings:', error)
-      alert('Error saving settings. Please try again.')
     } finally {
       setIsSaving(false)
     }
@@ -317,75 +331,29 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         </label>
                         {getValidationIcon(validationStates[provider.key])}
                       </div>
-                      
-                      {/* Show different UI based on whether key exists and editing state */}
-                      {!editingKeys[provider.key] && apiKeys[provider.key] && validationStates[provider.key].isValid ? (
-                        // Show "Change API Key" button when key is registered
-                        <div className="flex items-center justify-between p-3 bg-gray-100 dark:bg-[#262626] rounded-lg border border-gray-200 dark:border-[#404040]">
-                          <div className="flex items-center space-x-2">
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                            <span className="text-sm text-gray-300">API key configured (encrypted locally)</span>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => startEditingKey(provider.key)}
-                            className="bg-transparent border-[#404040] text-gray-700 dark:text-gray-300 hover:bg-[#e5e7eb] dark:hover:bg-[#404040] hover:text-black dark:hover:text-white"
-                          >
-                            <Edit2 className="h-3 w-3 mr-1" />
-                            Change Key
-                          </Button>
-                        </div>
-                      ) : (
-                        // Show input field for new keys or when editing
-                        <>
-                          <div className="relative">
-                            <Input
-                              type={showKeys[provider.key] ? 'text' : 'password'}
-                              placeholder={provider.placeholder}
-                              value={editingKeys[provider.key] ? tempApiKeys[provider.key] : apiKeys[provider.key]}
-                              onChange={(e) => handleApiKeyChange(provider.key, e.target.value)}
-                              className={`pr-12 bg-white dark:bg-[#191919] border-gray-300 dark:border-[#262626] text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-gray-400 dark:focus:border-[#404040] focus:ring-0 transition-colors ${
-                                validationStates[provider.key].error ? 'border-red-500' : 
-                                validationStates[provider.key].isValid ? 'border-green-500' : ''
-                              }`}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => toggleKeyVisibility(provider.key)}
-                              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
-                            >
-                              {showKeys[provider.key] ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {/* Show save/cancel buttons when editing */}
-                          {editingKeys[provider.key] && (
-                            <div className="flex items-center space-x-2">
-                              <Button
-                                size="sm"
-                                onClick={() => saveApiKey(provider.key)}
-                                disabled={validationStates[provider.key].error !== undefined && tempApiKeys[provider.key].trim() !== ''}
-                                className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
-                              >
-                                Save
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => cancelEditingKey(provider.key)}
-                                className="bg-transparent border-gray-300 dark:border-[#404040] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#404040] hover:text-black dark:hover:text-white"
-                              >
-                                Cancel
-                              </Button>
-                            </div>
+                      <div className="relative">
+                        <Input
+                          type={showKeys[provider.key] ? 'text' : 'password'}
+                          placeholder={provider.placeholder}
+                          value={tempApiKeys[provider.key]}
+                          onChange={(e) => handleApiKeyChange(provider.key, e.target.value)}
+                          className={`pr-12 bg-white dark:bg-[#191919] border-gray-300 dark:border-[#262626] text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-gray-400 dark:focus:border-[#404040] focus:ring-0 transition-colors ${
+                            validationStates[provider.key].error ? 'border-red-500' : 
+                            validationStates[provider.key].isValid ? 'border-green-500' : ''
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => toggleKeyVisibility(provider.key)}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
+                        >
+                          {showKeys[provider.key] ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
                           )}
-                        </>
-                      )}
+                        </button>
+                      </div>
                       
                       {validationStates[provider.key].error && (editingKeys[provider.key] || !apiKeys[provider.key]) && (
                         <p className="text-xs text-red-400">
@@ -419,7 +387,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     disabled={isSaving}
                     className="bg-white text-black hover:bg-gray-200 disabled:opacity-50 transition-all duration-200"
                   >
-                    {isSaving ? 'Saving...' : 'Save API Keys'}
+                    {isSaving ? 'Saving...' : 'Save Changes'}
                   </Button>
                 </div>
               </div>

@@ -21,13 +21,19 @@ export function AIProviderDropdown({ selectedProvider, onProviderChange, disable
   const [validProviders, setValidProviders] = useState<AIProvider[]>([])
 
   useEffect(() => {
-    const providers = getValidProviders()
-    setValidProviders(providers)
-    
-    // If no provider is selected and we have valid providers, select the first one
-    if (!selectedProvider && providers.length > 0) {
-      onProviderChange(providers[0])
+    let mounted = true
+    const refresh = async () => {
+      const providers = await getValidProviders()
+      if (!mounted) return
+      setValidProviders(providers)
+      if (!selectedProvider && providers.length > 0) {
+        onProviderChange(providers[0])
+      }
     }
+    refresh()
+    const listener = () => refresh()
+    window.addEventListener('asteria-keys-updated', listener as any)
+    return () => { mounted = false; window.removeEventListener('asteria-keys-updated', listener as any) }
   }, [selectedProvider, onProviderChange])
 
   if (validProviders.length === 0) {

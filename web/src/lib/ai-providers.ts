@@ -47,9 +47,26 @@ export const validateAPIKey = (provider: string, apiKey: string): { isValid: boo
   }
 }
 
-export const getValidProviders = (): AIProvider[] => {
-  return AI_PROVIDERS.filter(provider => {
-    const apiKey = localStorage.getItem(`asteria-${provider.key}-key`) || ''
-    return validateAPIKey(provider.key, apiKey).isValid
-  })
+import { secureLoad } from '@/lib/secure-store'
+
+export const getValidProviders = async (): Promise<AIProvider[]> => {
+  const secret = (typeof window !== 'undefined')
+    ? (localStorage.getItem('asteria-local-secret') || '')
+    : ''
+  const results: AIProvider[] = []
+  for (const provider of AI_PROVIDERS) {
+    let apiKey = ''
+    if (secret) {
+      try {
+        apiKey = await secureLoad(provider.key, secret) || ''
+      } catch {}
+    }
+    if (!apiKey && typeof window !== 'undefined') {
+      apiKey = localStorage.getItem(`asteria-${provider.key}-key`) || ''
+    }
+    if (validateAPIKey(provider.key, apiKey).isValid) {
+      results.push(provider)
+    }
+  }
+  return results
 }
