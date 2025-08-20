@@ -22,14 +22,16 @@ export function layoutDAGAll(nodesIn: RFNode[], edges: RFEdge[]) {
     rank.set(v, ps.length ? Math.max(...ps.map(p => (rank.get(p) ?? 0) + 1)) : 0);
   }
 
-  // 2) Columns by rank
+  // 2) Columns by rank (only include nodes that exist)
   const columns = new Map<number, string[]>();
   for (const [id, r] of rank) {
-    if (!columns.has(r)) columns.set(r, []);
-    columns.get(r)!.push(id);
+    if (g.nodes.has(id)) { // Only include nodes that exist in the graph
+      if (!columns.has(r)) columns.set(r, []);
+      columns.get(r)!.push(id);
+    }
   }
 
-  // 3) Order within columns (barycenter from previous column)
+  // 3) Order within columns (barycenter from previous column + shared children bonus)
   const colIndices = new Map<string, number>();
   const sortedCols = [...columns.keys()].sort((a, b) => a - b);
   for (const c of sortedCols) {
@@ -46,16 +48,32 @@ export function layoutDAGAll(nodesIn: RFNode[], edges: RFEdge[]) {
       return { id, bc, prevY };
     });
 
-    scored.sort((a, b) => (a.bc - b.bc) || (a.prevY - b.prevY));
-    scored.forEach((s, i) => colIndices.set(s.id, i));
-    columns.set(c, scored.map(s => s.id));
+    // Apply shared children grouping: nodes that share children should be closer
+    const improved = improveOrderingForSharedChildren(scored, children, prevIndex);
+
+    improved.sort((a, b) => (a.bc - b.bc) || (a.prevY - b.prevY));
+    improved.forEach((s, i) => colIndices.set(s.id, i));
+    columns.set(c, improved.map(s => s.id));
   }
 
   // 4) Assign coordinates
   const colX = new Map<number, number>();
   sortedCols.forEach(c => {
-    const maxW = Math.max(...(columns.get(c) ?? []).map(id => g.nodes.get(id)?.width ?? DEFAULT_W), DEFAULT_W);
-    const left = (c === 0) ? 0 : (colX.get(c - 1)! + (Math.max(...(columns.get(c - 1) ?? []).map(id => g.nodes.get(id)?.width ?? DEFAULT_W), DEFAULT_W)) + COL_GAP);
+    const nodes = columns.get(c) ?? [];
+    const widths = nodes.map(id => {
+      const node = g.nodes.get(id);
+      return node?.width ?? DEFAULT_W;
+    });
+    const maxW = widths.length > 0 ? Math.max(...widths) : DEFAULT_W;
+    
+    const prevNodes = columns.get(c - 1) ?? [];
+    const prevWidths = prevNodes.map(id => {
+      const node = g.nodes.get(id);
+      return node?.width ?? DEFAULT_W;
+    });
+    const prevMaxW = prevWidths.length > 0 ? Math.max(...prevWidths) : DEFAULT_W;
+    
+    const left = (c === 0) ? 0 : (colX.get(c - 1)! + prevMaxW + COL_GAP);
     colX.set(c, left);
   });
 
@@ -63,7 +81,11 @@ export function layoutDAGAll(nodesIn: RFNode[], edges: RFEdge[]) {
     const ids = columns.get(c)!;
     let y = 0;
     ids.forEach((id, i) => {
-      const node = g.nodes.get(id)!;
+      const node = g.nodes.get(id);
+      if (!node) {
+        console.warn(`Layout: Node ${id} not found in nodes map`);
+        return;
+      }
       const h = node.height ?? DEFAULT_H;
       node.position = { x: colX.get(c)!, y };
       y += h + ROW_GAP;
@@ -101,6 +123,56 @@ export function layoutDAGIncremental(nodes: RFNode[], edges: RFEdge[], changedId
   const laidMap = new Map(laid.map(n => [n.id, n]));
 
   return nodes.map(n => laidMap.get(n.id) ?? n); // merge back
+}
+
+// Helper to improve ordering by considering shared children
+function improveOrderingForSharedChildren(
+  scored: Array<{ id: string; bc: number; prevY: number }>,
+  children: Map<string, string[]>,
+  prevIndex: Map<string, number>
+): Array<{ id: string; bc: number; prevY: number }> {
+  // Find nodes that share children and adjust their barycenter to be closer
+  const nodeChildren = new Map<string, Set<string>>();
+  
+  // Build map of each node's children
+  for (const { id } of scored) {
+    const nodeChildrenSet = new Set(children.get(id) ?? []);
+    nodeChildren.set(id, nodeChildrenSet);
+  }
+
+  // Adjust barycenter based on shared children
+  return scored.map(node => {
+    let adjustment = 0;
+    let sharedCount = 0;
+
+    // Look at other nodes in this column
+    for (const other of scored) {
+      if (other.id === node.id) continue;
+
+      const nodeChildrenSet = nodeChildren.get(node.id) ?? new Set();
+      const otherChildrenSet = nodeChildren.get(other.id) ?? new Set();
+      
+      // Count shared children
+      const sharedChildren = new Set([...nodeChildrenSet].filter(x => otherChildrenSet.has(x)));
+      
+      if (sharedChildren.size > 0) {
+        // Adjust position to be closer to nodes with shared children
+        const weight = sharedChildren.size / Math.max(nodeChildrenSet.size, otherChildrenSet.size, 1);
+        adjustment += other.bc * weight;
+        sharedCount += weight;
+      }
+    }
+
+    // Apply adjustment if we found shared children
+    const adjustedBc = sharedCount > 0 
+      ? (node.bc + adjustment) / (1 + sharedCount) 
+      : node.bc;
+
+    return {
+      ...node,
+      bc: adjustedBc
+    };
+  });
 }
 
 // helpers

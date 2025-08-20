@@ -20,6 +20,7 @@ interface NodeEditPanelProps {
   onClose: () => void
   onSave: (nodeId: string, updates: Partial<ReactFlowNodeDataType>) => void
   onDelete?: (nodeId: string) => void
+  onConfirmAdd?: (nodeData: Partial<ReactFlowNodeDataType>, position: { x: number; y: number }) => Node<ReactFlowNodeDataType>
   allNodes: Node<ReactFlowNodeDataType>[]
   selectedNodes: Node<ReactFlowNodeDataType>[]
   onAddParent: (childId: string, parentId: string) => void
@@ -34,6 +35,7 @@ export function NodeEditPanel({
   onClose, 
   onSave, 
   onDelete,
+  onConfirmAdd,
   allNodes,
   selectedNodes,
   onAddParent,
@@ -128,7 +130,12 @@ export function NodeEditPanel({
   }, [tagSearch, allExistingTags, formData.tags])
 
   const handleSave = () => {
-    if (node) {
+    if (isAddingNewNode && onConfirmAdd && node) {
+      // For new nodes, call confirm add with form data and node position
+      onConfirmAdd(formData, node.position)
+      onClose()
+    } else if (node) {
+      // For existing nodes, call regular save
       onSave(node.id, formData)
       onClose()
     }
@@ -260,7 +267,7 @@ export function NodeEditPanel({
             <DropdownMenuTrigger asChild>
               <Button 
                 variant="outline" 
-                className="w-full justify-between border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="w-full justify-between border-gray-200 dark:border-[#191919] bg-white dark:bg-black hover:bg-accent hover:text-accent-foreground"
               >
                 {formData.kind ? formData.kind.charAt(0).toUpperCase() + formData.kind.slice(1) : 'Note'}
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -280,7 +287,7 @@ export function NodeEditPanel({
                 <DropdownMenuItem 
                   key={option.value}
                   onClick={() => setFormData(prev => ({ ...prev, kind: option.value as NodeKind }))}
-                  className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="hover:bg-accent hover:text-accent-foreground"
                 >
                   {option.label}
                 </DropdownMenuItem>
@@ -338,10 +345,10 @@ export function NodeEditPanel({
                   <button
                     key={index}
                     onClick={() => handleAddTag(tag)}
-                    className={`w-full px-2 py-1.5 text-left first:rounded-t-lg last:rounded-b-lg text-gray-900 dark:text-white transition-colors ${
+                    className={`w-full px-2 py-1.5 text-left first:rounded-t-lg last:rounded-b-lg transition-colors ${
                       index === selectedTagIndex 
-                        ? 'bg-blue-100 dark:bg-blue-900/50' 
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                        ? 'bg-accent text-accent-foreground' 
+                        : 'hover:bg-accent hover:text-accent-foreground'
                     }`}
                   >
                     <div className={`text-xs ${tag.startsWith('Create "') ? 'font-medium text-green-600 dark:text-green-400' : ''}`}>
@@ -427,8 +434,8 @@ export function NodeEditPanel({
                     onClick={() => handleAddParent(parentNode)}
                     className={`w-full px-2 py-1.5 text-left first:rounded-t-lg last:rounded-b-lg text-gray-900 dark:text-white transition-colors ${
                       index === selectedParentIndex 
-                        ? 'bg-blue-100 dark:bg-blue-900/50' 
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                        ? 'bg-accent text-accent-foreground' 
+                        : 'hover:bg-accent hover:text-accent-foreground'
                     }`}
                   >
                     <div className="text-xs font-medium">{parentNode.data.title}</div>
@@ -530,7 +537,7 @@ export function NodeEditPanel({
             <Button 
               onClick={onClose}
               variant="outline"
-              className="border-gray-200 dark:border-[#191919] text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="border-gray-200 dark:border-[#191919] hover:bg-accent hover:text-accent-foreground"
             >
               Cancel
             </Button>

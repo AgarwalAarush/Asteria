@@ -126,6 +126,7 @@ export default function GraphPage() {
   const [isEditPanelOpen, setIsEditPanelOpen] = useState(false)
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false)
   const [isAddingNewNode, setIsAddingNewNode] = useState(false)
+  const [isAIFocused, setIsAIFocused] = useState(false)
   const [layoutFunctions, setLayoutFunctions] = useState<{
     relayoutAll: () => void
     relayoutFrom: (nodeId: string) => void
@@ -350,22 +351,73 @@ export default function GraphPage() {
     setLayoutFunctions({ relayoutAll, relayoutFrom })
   }, [])
 
-  // Handle adding new nodes
+  // Handle initiating new node creation (just opens edit panel)
   const handleAddNode = (newNode: Node<ReactFlowNodeDataType>) => {
+    // Don't add to graph yet, just open edit panel
+    setEditingNode(newNode)
+    setIsEditPanelOpen(true)
+    setIsAddingNewNode(true)
+  }
+
+  // Actually add node to graph (called when "Add Node" is pressed)
+  const handleConfirmAddNode = (nodeData: Partial<ReactFlowNodeDataType>, position: { x: number; y: number }) => {
+    const newNodeId = `node-${Date.now()}`
+    const newNode: Node<ReactFlowNodeDataType> = {
+      id: newNodeId,
+      type: 'ideaNode',
+      position,
+      data: {
+        id: newNodeId,
+        title: nodeData.title || 'New Node',
+        kind: nodeData.kind || 'note',
+        body: nodeData.body || '',
+        tags: nodeData.tags || [],
+        scorePainkiller: nodeData.scorePainkiller,
+        scoreFounderFit: nodeData.scoreFounderFit,
+        scoreTiming: nodeData.scoreTiming,
+        scoreMoat: nodeData.scoreMoat,
+        scorePracticality: nodeData.scorePracticality,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    }
+
     setNodes((nds) => [...nds, newNode])
     
     // Save to Supabase
     saveNodeToSupabase(newNode.data, newNode.position)
+
+    // Check if this node has a pending parent (from plus button)
+    const pendingParentId = (editingNode as any)?.pendingParentId
+    if (pendingParentId) {
+      // Create edge from parent to new node
+      const newEdgeId = `edge-${Date.now()}`
+      const newEdge: Edge<ReactFlowEdgeDataType> = {
+        id: newEdgeId,
+        source: pendingParentId,
+        target: newNodeId,
+        type: 'relationEdge',
+        data: {
+          id: newEdgeId,
+          source: pendingParentId,
+          target: newNodeId,
+          relation: 'related',
+          weight: 0.7,
+        },
+      }
+      
+      setEdges((eds) => [...eds, newEdge])
+      saveEdgeToSupabase(newEdge.data)
+    }
     
-    // Apply layout after node is added
+    // Apply layout after node (and possibly edge) is added
     setTimeout(() => {
       if (layoutFunctions) {
         layoutFunctions.relayoutAll()
       }
-      setEditingNode(newNode)
-      setIsEditPanelOpen(true)
-      setIsAddingNewNode(true)
-    }, 0)
+    }, 100)
+
+    return newNode
   }
 
   // Handle deleting nodes
@@ -489,73 +541,34 @@ export default function GraphPage() {
 
   // Handle adding new node with parent from hover plus button
   const handleAddNodeWithParent = useCallback((parentId: string) => {
-    // Generate IDs first
-    const newNodeId = `node-${Date.now()}`
-    const newEdgeId = `edge-${Date.now()}`
+    const timestamp = Date.now()
+    const nodeId = `draft-${timestamp}`
+    const currentTime = new Date().toISOString()
     
-    setNodes((currentNodes) => {
-      const parentNode = currentNodes.find(n => n.id === parentId)
-      if (!parentNode) return currentNodes
-
-      // Create new node with temporary position (will be repositioned by layout)
-      const newNode: Node<ReactFlowNodeDataType> = {
-        id: newNodeId,
-        type: 'ideaNode',
-        position: { x: 0, y: 0 }, // Temporary position, layout will fix this
-        data: {
-          id: newNodeId,
-          title: 'Add Node',
-          kind: 'note',
-          body: '',
-          tags: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      }
-
-      // Save node to Supabase
-      saveNodeToSupabase(newNode.data, newNode.position)
-
-      return [...currentNodes, newNode]
-    })
-    
-    // Create edge from parent to new node
-    const newEdge: Edge<ReactFlowEdgeDataType> = {
-      id: newEdgeId,
-      source: parentId,
-      target: newNodeId,
-      type: 'relationEdge',
+    // Create and set the editing node immediately without intermediate variables
+    const editNode = {
+      id: nodeId,
+      type: 'ideaNode' as const,
+      position: { x: 0, y: 0 },
       data: {
-        id: newEdgeId,
-        source: parentId,
-        target: newNodeId,
-        relation: 'related',
-        weight: 0.7,
+        id: nodeId,
+        title: 'Add Node',
+        kind: 'note' as const,
+        body: '',
+        tags: [] as string[],
+        createdAt: currentTime,
+        updatedAt: currentTime,
       },
-    }
-    
-    setEdges((eds) => [...eds, newEdge])
-    
-    // Save edge to Supabase
-    saveEdgeToSupabase(newEdge.data)
+    } as Node<ReactFlowNodeDataType>
 
-    // Apply layout after both node and edge are added, then open edit panel
-    setTimeout(() => {
-      if (layoutFunctions) {
-        layoutFunctions.relayoutFrom(newNodeId)
-      }
-      // Find the created node and set it for editing
-      setNodes((currentNodes) => {
-        const createdNode = currentNodes.find(n => n.id === newNodeId)
-        if (createdNode) {
-          setEditingNode(createdNode)
-          setIsEditPanelOpen(true)
-          setIsAddingNewNode(true)
-        }
-        return currentNodes
-      })
-    }, 100) // Small delay to ensure both state updates complete
-  }, [edges, layoutFunctions])
+    // Store the parent ID for later use when confirming the addition
+    ;(editNode as any).pendingParentId = parentId
+
+    // Just open edit panel with draft node
+    setEditingNode(editNode)
+    setIsEditPanelOpen(true)
+    setIsAddingNewNode(true)
+  }, [])
 
   // Export graph data
   const handleExport = () => {
@@ -867,6 +880,7 @@ export default function GraphPage() {
               selectedNodes={selectedNodes}
               onLayoutReady={handleLayoutReady}
               isEditPanelOpen={isEditPanelOpen}
+              isAIFocused={isAIFocused}
               className="w-full h-full"
             />
         </div>
@@ -893,6 +907,7 @@ export default function GraphPage() {
               edges={edges}
               selectedNodes={selectedNodes}
               onAIAction={handleAIAction}
+              onFocusChange={setIsAIFocused}
             />
           </div>
         </div>
@@ -911,6 +926,7 @@ export default function GraphPage() {
         }}
         onSave={handleNodeUpdate}
         onDelete={handleDeleteNode}
+        onConfirmAdd={handleConfirmAddNode}
         allNodes={nodes}
         selectedNodes={selectedNodes}
         onAddParent={handleAddParent}

@@ -58,10 +58,11 @@ interface GraphCanvasProps {
   onLayoutReady?: (relayoutAll: () => void, relayoutFrom: (nodeId: string) => void) => void
   className?: string
   isEditPanelOpen?: boolean
+  isAIFocused?: boolean
 }
 
 // Hook for adding nodes with "N" key
-function useAddNodeHotkey(wrapperRef: React.RefObject<HTMLDivElement>, onAddNode?: (node: Node<ReactFlowNodeDataType>) => void, disabled?: boolean) {
+function useAddNodeHotkey(wrapperRef: React.RefObject<HTMLDivElement | null>, onAddNode?: (node: Node<ReactFlowNodeDataType>) => void, disabled?: boolean, aiFocused?: boolean) {
   const { project } = useReactFlow()
   const mouse = useRef({ x: 200, y: 200 }) // fallback position
 
@@ -71,7 +72,7 @@ function useAddNodeHotkey(wrapperRef: React.RefObject<HTMLDivElement>, onAddNode
     }
     
     const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== 'n' || !onAddNode || !wrapperRef.current || disabled) return
+      if (e.key.toLowerCase() !== 'n' || !onAddNode || !wrapperRef.current || disabled || aiFocused) return
       
       const bounds = wrapperRef.current.getBoundingClientRect()
       const pos = project({ 
@@ -142,8 +143,9 @@ export function GraphCanvas({
   onLayoutReady,
   className = '',
   isEditPanelOpen = false,
+  isAIFocused = false,
 }: GraphCanvasProps) {
-  const wrapperRef = useRef<HTMLDivElement>(null)
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
   const { project } = useReactFlow()
   const [counter, setCounter] = useState(1)
   const { relayoutAll, relayoutFrom } = useAutoLayout()
@@ -156,7 +158,7 @@ export function GraphCanvas({
   }, [onLayoutReady, relayoutAll, relayoutFrom])
 
   // Use the hotkey hooks
-  useAddNodeHotkey(wrapperRef, onAddNode, isEditPanelOpen)
+  useAddNodeHotkey(wrapperRef, onAddNode, isEditPanelOpen || isAIFocused)
   useDeleteNodeHotkey(onDeleteNode, selectedNodes, isEditPanelOpen)
 
   // Create node types with custom props, memoized with stable dependency

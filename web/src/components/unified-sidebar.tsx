@@ -47,6 +47,7 @@ interface AISidebarProps extends React.ComponentProps<typeof Sidebar> {
   edges: Edge<ReactFlowEdgeDataType>[]
   selectedNodes: Node<ReactFlowNodeDataType>[]
   onAIAction?: (mode: AIModeType, context: any) => void
+  onFocusChange?: (isFocused: boolean) => void
 }
 
 export function AISidebar({
@@ -54,6 +55,7 @@ export function AISidebar({
   edges,
   selectedNodes,
   onAIAction,
+  onFocusChange,
   ...props
 }: AISidebarProps) {
   const [activeAIMode, setActiveAIMode] = useState<AIModeType>('suggest')
@@ -132,6 +134,8 @@ export function AISidebar({
                     <Textarea
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
+                      onFocus={() => onFocusChange?.(true)}
+                      onBlur={() => onFocusChange?.(false)}
                       placeholder={`Enter your ${currentAIMode.name.toLowerCase()} request...`}
                       className="min-h-[100px] resize-none"
                     />
@@ -226,6 +230,8 @@ export function AIOverlay({
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
+          onFocus={() => onFocusChange?.(true)}
+          onBlur={() => onFocusChange?.(false)}
           placeholder={`Enter your ${currentAIMode.name.toLowerCase()} request...`}
           className="min-h-[200px] resize-none border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
         />

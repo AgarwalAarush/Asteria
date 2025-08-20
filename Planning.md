@@ -425,3 +425,4 @@ Future:
 - Hidden notes, when clicking on the node can view the notes
 - Analytics
 - Querying nodes
+- When typing into AI Assisstant - as in focus is on typing, n shouldnt create a new node either
