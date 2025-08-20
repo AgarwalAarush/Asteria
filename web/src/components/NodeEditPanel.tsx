@@ -22,6 +22,7 @@ interface NodeEditPanelProps {
   allNodes: Node<ReactFlowNodeDataType>[]
   selectedNodes: Node<ReactFlowNodeDataType>[]
   onAddParent: (childId: string, parentId: string) => void
+  onRemoveParent?: (childId: string, parentId: string) => void
   isAddingNewNode?: boolean
   edges?: { source: string; target: string }[]
 }
@@ -34,6 +35,7 @@ export function NodeEditPanel({
   allNodes,
   selectedNodes,
   onAddParent,
+  onRemoveParent,
   isAddingNewNode = false,
   edges = []
 }: NodeEditPanelProps) {
@@ -59,14 +61,26 @@ export function NodeEditPanel({
         scorePracticality: node.data.scorePracticality || undefined,
       })
     }
-  }, [node])
+  }, [node?.id]) // Only reset when node ID changes, not when node object reference changes
+
+  // Reset search states when panel opens/closes
+  useEffect(() => {
+    if (isOpen) {
+      setParentSearch('')
+      setTagSearch('')
+      setSuggestedParents([])
+      setSuggestedTags([])
+      setSelectedParentIndex(-1)
+      setSelectedTagIndex(-1)
+    }
+  }, [isOpen])
 
   // Get current parent nodes (memoized to prevent infinite loops)
   const currentParents = useMemo(() => {
-    return node ? allNodes.filter(n => 
+    return node?.id ? allNodes.filter(n => 
       edges.some(e => e.source === n.id && e.target === node.id)
     ) : []
-  }, [node, allNodes, edges])
+  }, [node?.id, allNodes, edges])
 
   // Get all existing tags across all nodes (memoized to prevent infinite loops)
   const allExistingTags = useMemo(() => {
@@ -147,6 +161,12 @@ export function NodeEditPanel({
     }))
   }
 
+  const handleRemoveParent = (parentId: string) => {
+    if (node && onRemoveParent) {
+      onRemoveParent(node.id, parentId)
+    }
+  }
+
   const handleParentSearchKeyDown = (e: React.KeyboardEvent) => {
     if (suggestedParents.length === 0) return
 
@@ -202,7 +222,9 @@ export function NodeEditPanel({
   return (
     <div className="fixed top-16 left-4 w-96 h-[calc(100vh-5rem)] bg-white dark:bg-black border border-gray-200 dark:border-[#191919] rounded-xl shadow-lg flex flex-col z-50">
       <div className="p-4 border-b border-gray-200 dark:border-[#191919] flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Edit Node</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+          {isAddingNewNode ? 'Add Node' : 'Edit Node'}
+        </h2>
         <button
           onClick={onClose}
           className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
@@ -339,6 +361,12 @@ export function NodeEditPanel({
                   <span className="text-green-700 dark:text-green-300 text-[10px] opacity-60 capitalize">
                     {parent.data.kind}
                   </span>
+                  <button
+                    onClick={() => handleRemoveParent(parent.id)}
+                    className="text-green-700 dark:text-green-300 hover:text-green-900 dark:hover:text-green-100 ml-1"
+                  >
+                    <X size={12} />
+                  </button>
                 </span>
               ))}
             </div>

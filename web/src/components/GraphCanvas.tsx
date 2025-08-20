@@ -29,6 +29,11 @@ const createIdeaNodeWithProps = (onAddChild?: (parentId: string) => void) => {
   )
 }
 
+// Define node types outside component to prevent recreation
+const createNodeTypes = (onAddNodeWithParent?: (parentId: string) => void): NodeTypes => ({
+  ideaNode: createIdeaNodeWithProps(onAddNodeWithParent),
+})
+
 // Define custom edge types
 const edgeTypes: EdgeTypes = {
   relationEdge: RelationEdge,
@@ -46,10 +51,11 @@ interface GraphCanvasProps {
   onAddNode?: (node: Node<ReactFlowNodeDataType>) => void
   onAddNodeWithParent?: (parentId: string) => void
   className?: string
+  isEditPanelOpen?: boolean
 }
 
 // Hook for adding nodes with "N" key
-function useAddNodeHotkey(wrapperRef: React.RefObject<HTMLDivElement>, onAddNode?: (node: Node<ReactFlowNodeDataType>) => void) {
+function useAddNodeHotkey(wrapperRef: React.RefObject<HTMLDivElement>, onAddNode?: (node: Node<ReactFlowNodeDataType>) => void, disabled?: boolean) {
   const { project } = useReactFlow()
   const mouse = useRef({ x: 200, y: 200 }) // fallback position
 
@@ -59,7 +65,7 @@ function useAddNodeHotkey(wrapperRef: React.RefObject<HTMLDivElement>, onAddNode
     }
     
     const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== 'n' || !onAddNode || !wrapperRef.current) return
+      if (e.key.toLowerCase() !== 'n' || !onAddNode || !wrapperRef.current || disabled) return
       
       const bounds = wrapperRef.current.getBoundingClientRect()
       const pos = project({ 
@@ -73,7 +79,7 @@ function useAddNodeHotkey(wrapperRef: React.RefObject<HTMLDivElement>, onAddNode
         position: pos,
         data: {
           id: `node-${Date.now()}`,
-          title: 'New Idea',
+          title: 'Add Node',
           kind: 'note',
           body: '',
           tags: [],
@@ -92,7 +98,7 @@ function useAddNodeHotkey(wrapperRef: React.RefObject<HTMLDivElement>, onAddNode
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('keydown', onKey)
     }
-  }, [project, onAddNode, wrapperRef])
+  }, [project, onAddNode, wrapperRef, disabled])
 }
 
 export function GraphCanvas({
@@ -107,6 +113,7 @@ export function GraphCanvas({
   onAddNode,
   onAddNodeWithParent,
   className = '',
+  isEditPanelOpen = false,
 }: GraphCanvasProps) {
   const [nodes, setNodes, onNodesStateChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesStateChange] = useEdgesState(initialEdges)
@@ -115,7 +122,7 @@ export function GraphCanvas({
   const [counter, setCounter] = useState(1)
 
   // Use the hotkey hook
-  useAddNodeHotkey(wrapperRef, onAddNode)
+  useAddNodeHotkey(wrapperRef, onAddNode, isEditPanelOpen)
 
   // Create node types with custom props
   const nodeTypes: NodeTypes = useMemo(() => ({
@@ -221,7 +228,7 @@ export function GraphCanvas({
         position: pos,
         data: {
           id: `node-${Date.now()}`,
-          title: `New Node ${counter}`,
+          title: 'Add Node',
           kind: 'note',
           body: '',
           tags: [],
@@ -258,7 +265,7 @@ export function GraphCanvas({
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
+        defaultViewport={{ x: 0, y: 0, zoom: 0.25 }}
         fitView
         proOptions={proOptions}
       >

@@ -6,6 +6,8 @@ import { GraphCanvasProvider } from '@/components/GraphCanvas'
 import { AIOverlay } from '@/components/unified-sidebar'
 import { NodeEditPanel } from '@/components/NodeEditPanel'
 import { AuthModal } from '@/components/auth/AuthModal'
+import { Button } from '@/components/ui/button'
+import { Download, Upload } from 'lucide-react'
 
 
 import {
@@ -36,7 +38,7 @@ const sampleNodes: Node<ReactFlowNodeDataType>[] = [
   {
     id: '1',
     type: 'ideaNode',
-    position: { x: 100, y: 100 },
+    position: { x: 0, y: 0 },
     data: {
       id: '1',
       title: 'Remote work productivity issues',
@@ -53,7 +55,7 @@ const sampleNodes: Node<ReactFlowNodeDataType>[] = [
   {
     id: '2',
     type: 'ideaNode',
-    position: { x: 400, y: 100 },
+    position: { x: 400, y: -100 },
     data: {
       id: '2',
       title: 'AI-powered focus assistant',
@@ -69,7 +71,7 @@ const sampleNodes: Node<ReactFlowNodeDataType>[] = [
   {
     id: '3',
     type: 'ideaNode',
-    position: { x: 700, y: 100 },
+    position: { x: 400, y: 100 },
     data: {
       id: '3',
       title: 'Remote work tools market',
@@ -133,6 +135,75 @@ export default function GraphPage() {
     }
   }, [])
 
+  // Load data from Supabase when user is authenticated
+  useEffect(() => {
+    const loadDataFromSupabase = async () => {
+      if (!user || isDemoMode || loading) return
+
+      try {
+        // Load nodes
+        const { data: nodesData, error: nodesError } = await supabase
+          .from('Node')
+          .select('*')
+          .eq('spaceId', 'default-space')
+
+        if (nodesError) {
+          console.error('Error loading nodes:', nodesError)
+        } else if (nodesData && nodesData.length > 0) {
+          const loadedNodes: Node<ReactFlowNodeDataType>[] = nodesData.map((dbNode: any) => ({
+            id: dbNode.id,
+            type: 'ideaNode',
+            position: dbNode.metadata?.position || { x: 0, y: 0 },
+            data: {
+              id: dbNode.id,
+              title: dbNode.title || 'Untitled',
+              kind: dbNode.kind || 'note',
+              body: dbNode.body || '',
+              tags: dbNode.metadata?.tags || [],
+              scorePainkiller: dbNode.scorePainkiller,
+              scoreFounderFit: dbNode.scoreFounderFit,
+              scoreTiming: dbNode.scoreTiming,
+              scoreMoat: dbNode.scoreMoat,
+              scorePracticality: dbNode.scorePracticality,
+              createdAt: dbNode.createdAt,
+              updatedAt: dbNode.updatedAt,
+            }
+          }))
+          setNodes(loadedNodes)
+        }
+
+        // Load edges
+        const { data: edgesData, error: edgesError } = await supabase
+          .from('Edge')
+          .select('*')
+          .eq('spaceId', 'default-space')
+
+        if (edgesError) {
+          console.error('Error loading edges:', edgesError)
+        } else if (edgesData && edgesData.length > 0) {
+          const loadedEdges: Edge<ReactFlowEdgeDataType>[] = edgesData.map((dbEdge: any) => ({
+            id: dbEdge.id,
+            source: dbEdge.sourceId,
+            target: dbEdge.targetId,
+            type: 'relationEdge',
+            data: {
+              id: dbEdge.id,
+              source: dbEdge.sourceId,
+              target: dbEdge.targetId,
+              relation: dbEdge.relation || 'related',
+              weight: dbEdge.weight || 0.5,
+            }
+          }))
+          setEdges(loadedEdges)
+        }
+      } catch (error) {
+        console.error('Error loading data from Supabase:', error)
+      }
+    }
+
+    loadDataFromSupabase()
+  }, [user, isDemoMode, loading, supabase])
+
   // Handle node selection (with multi-select support)
   const handleNodeClick = useCallback((node: Node<ReactFlowNodeDataType>, event?: React.MouseEvent) => {
     if (event?.ctrlKey || event?.metaKey) {
@@ -158,20 +229,82 @@ export default function GraphPage() {
     setIsAddingNewNode(false)
   }, [])
 
+  // Save node to Supabase
+  const saveNodeToSupabase = async (nodeData: ReactFlowNodeDataType, position: { x: number; y: number }) => {
+    if (!user || isDemoMode) return
+
+    try {
+      const { data, error } = await supabase
+        .from('Node')
+        .upsert({
+          id: nodeData.id,
+          spaceId: 'default-space', // TODO: Implement proper space management
+          title: nodeData.title,
+          kind: nodeData.kind,
+          body: nodeData.body || '',
+          scorePainkiller: nodeData.scorePainkiller,
+          scoreFounderFit: nodeData.scoreFounderFit,
+          scoreTiming: nodeData.scoreTiming,
+          scoreMoat: nodeData.scoreMoat,
+          scorePracticality: nodeData.scorePracticality,
+          // Store position and tags as metadata since they're not in the schema
+          metadata: { 
+            position,
+            tags: nodeData.tags || []
+          }
+        })
+        .select()
+
+      if (error) {
+        console.error('Error saving node:', error)
+      }
+    } catch (error) {
+      console.error('Error saving node:', error)
+    }
+  }
+
+  // Save edge to Supabase
+  const saveEdgeToSupabase = async (edgeData: ReactFlowEdgeDataType) => {
+    if (!user || isDemoMode) return
+
+    try {
+      const { data, error } = await supabase
+        .from('Edge')
+        .upsert({
+          id: edgeData.id,
+          spaceId: 'default-space', // TODO: Implement proper space management
+          sourceId: edgeData.source,
+          targetId: edgeData.target,
+          relation: edgeData.relation,
+          weight: edgeData.weight
+        })
+        .select()
+
+      if (error) {
+        console.error('Error saving edge:', error)
+      }
+    } catch (error) {
+      console.error('Error saving edge:', error)
+    }
+  }
+
   // Handle node updates
-  const handleNodeUpdate = (nodeId: string, updates: Partial<ReactFlowNodeDataType>) => {
+  const handleNodeUpdate = async (nodeId: string, updates: Partial<ReactFlowNodeDataType>) => {
+    // Update local state
     setNodes(prevNodes => 
-      prevNodes.map(node => 
-        node.id === nodeId 
-          ? { ...node, data: { ...node.data, ...updates } }
-          : node
-      )
+      prevNodes.map(node => {
+        if (node.id === nodeId) {
+          const updatedNode = { ...node, data: { ...node.data, ...updates } }
+          // Save to Supabase
+          saveNodeToSupabase(updatedNode.data, updatedNode.position)
+          return updatedNode
+        }
+        return node
+      })
     )
     
-    // Update editing node if it's the same node
-    if (editingNode?.id === nodeId) {
-      setEditingNode(prev => prev ? { ...prev, data: { ...prev.data, ...updates } } : null)
-    }
+    // Don't update editingNode to avoid triggering form reset
+    // The node data will be updated in the nodes array and that's sufficient
     
     // Update selected nodes if any match
     setSelectedNodes(prevSelected => 
@@ -211,6 +344,16 @@ export default function GraphPage() {
   // Handle adding new nodes
   const handleAddNode = (newNode: Node<ReactFlowNodeDataType>) => {
     setNodes((nds) => [...nds, newNode])
+    
+    // Save to Supabase
+    saveNodeToSupabase(newNode.data, newNode.position)
+    
+    // Open edit panel for the new node
+    setTimeout(() => {
+      setEditingNode(newNode)
+      setIsEditPanelOpen(true)
+      setIsAddingNewNode(true)
+    }, 0)
   }
 
   // Handle adding linked nodes from radial actions
@@ -280,6 +423,37 @@ export default function GraphPage() {
     }
 
     setEdges((eds) => [...eds, newEdge])
+    
+    // Save edge to Supabase
+    saveEdgeToSupabase(newEdge.data)
+  }
+
+  // Handle removing parent relationship
+  const handleRemoveParent = async (childId: string, parentId: string) => {
+    // Find and remove the edge
+    const edgeToRemove = edges.find(e => 
+      e.source === parentId && e.target === childId
+    )
+    
+    if (edgeToRemove) {
+      setEdges(prevEdges => prevEdges.filter(e => e.id !== edgeToRemove.id))
+      
+      // Remove from Supabase if authenticated
+      if (user && !isDemoMode) {
+        try {
+          const { error } = await supabase
+            .from('Edge')
+            .delete()
+            .eq('id', edgeToRemove.data.id)
+          
+          if (error) {
+            console.error('Error deleting edge:', error)
+          }
+        } catch (error) {
+          console.error('Error deleting edge:', error)
+        }
+      }
+    }
   }
 
   // Handle adding new node with parent from hover plus button
@@ -292,18 +466,34 @@ export default function GraphPage() {
       const parentNode = currentNodes.find(n => n.id === parentId)
       if (!parentNode) return currentNodes
 
-      // Position new node relative to parent
-      const offset = 200
+      // Calculate optimal position for new child (left-to-right tree layout)
+      const baseOffset = 400 // Increased spacing for better visibility
+      const verticalSpacing = 200 // Increased vertical spacing
+      
+      // Find existing children of this parent
+      const existingChildren = currentNodes.filter(node => 
+        edges.some(edge => edge.source === parentNode.id && edge.target === node.id)
+      )
+      
+      // Calculate the next position based on existing children
+      const childIndex = existingChildren.length
+      
+      // For left-to-right tree layout:
+      // - Children go to the right of parent
+      // - Vertical spacing distributes children evenly
+      const yOffset = childIndex * verticalSpacing - (existingChildren.length * verticalSpacing) / 2
+      
+      const position = {
+        x: parentNode.position.x + baseOffset,
+        y: parentNode.position.y + yOffset
+      }
       const newNode: Node<ReactFlowNodeDataType> = {
         id: newNodeId,
         type: 'ideaNode',
-        position: { 
-          x: parentNode.position.x + offset, 
-          y: parentNode.position.y 
-        },
+        position,
         data: {
           id: newNodeId,
-          title: 'New Node',
+          title: 'Add Node',
           kind: 'note',
           body: '',
           tags: [],
@@ -311,6 +501,9 @@ export default function GraphPage() {
           updatedAt: new Date().toISOString(),
         },
       }
+
+      // Save node to Supabase
+      saveNodeToSupabase(newNode.data, newNode.position)
 
       // Set the editing node for the panel (using setTimeout to ensure state update completes)
       setTimeout(() => {
@@ -338,7 +531,117 @@ export default function GraphPage() {
     }
     
     setEdges((eds) => [...eds, newEdge])
-  }, [])
+    
+    // Save edge to Supabase
+    saveEdgeToSupabase(newEdge.data)
+  }, [edges])
+
+  // Export graph data
+  const handleExport = () => {
+    const exportData = {
+      nodes: nodes.map(node => ({
+        id: node.id,
+        position: node.position,
+        data: node.data
+      })),
+      edges: edges.map(edge => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        data: edge.data
+      })),
+      exportedAt: new Date().toISOString(),
+      version: '1.0'
+    }
+
+    const dataStr = JSON.stringify(exportData, null, 2)
+    const dataBlob = new Blob([dataStr], { type: 'application/json' })
+    const url = URL.createObjectURL(dataBlob)
+    
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `asteria-graph-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  // Import graph data
+  const handleImport = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const importData = JSON.parse(e.target?.result as string)
+          
+          // Validate import data structure
+          if (!importData.nodes || !importData.edges || !Array.isArray(importData.nodes) || !Array.isArray(importData.edges)) {
+            alert('Invalid file format. Please select a valid Asteria graph export file.')
+            return
+          }
+
+          // Convert imported data to ReactFlow format
+          const importedNodes: Node<ReactFlowNodeDataType>[] = importData.nodes.map((node: any) => ({
+            id: node.id,
+            type: 'ideaNode',
+            position: node.position || { x: 0, y: 0 },
+            data: {
+              id: node.id,
+              title: node.data.title || 'Untitled',
+              kind: node.data.kind || 'note',
+              body: node.data.body || '',
+              tags: node.data.tags || [],
+              scorePainkiller: node.data.scorePainkiller,
+              scoreFounderFit: node.data.scoreFounderFit,
+              scoreTiming: node.data.scoreTiming,
+              scoreMoat: node.data.scoreMoat,
+              scorePracticality: node.data.scorePracticality,
+              createdAt: node.data.createdAt || new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+          }))
+
+          const importedEdges: Edge<ReactFlowEdgeDataType>[] = importData.edges.map((edge: any) => ({
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            type: 'relationEdge',
+            data: {
+              id: edge.id,
+              source: edge.source,
+              target: edge.target,
+              relation: edge.data.relation || 'related',
+              weight: edge.data.weight || 0.5,
+            }
+          }))
+
+          // Update state
+          setNodes(importedNodes)
+          setEdges(importedEdges)
+
+          // Save imported data to Supabase if authenticated
+          if (user && !isDemoMode) {
+            importedNodes.forEach(node => saveNodeToSupabase(node.data, node.position))
+            importedEdges.forEach(edge => saveEdgeToSupabase(edge.data))
+          }
+
+          alert(`Successfully imported ${importedNodes.length} nodes and ${importedEdges.length} edges.`)
+        } catch (error) {
+          console.error('Error importing file:', error)
+          alert('Error importing file. Please check the file format and try again.')
+        }
+      }
+      reader.readAsText(file)
+    }
+    input.click()
+  }
 
   if (loading) {
     return (
@@ -470,9 +773,39 @@ export default function GraphPage() {
               </NavigationMenuItem>
 
               <NavigationMenuItem>
-                <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-                  <Link href="#">Export</Link>
-                </NavigationMenuLink>
+                <NavigationMenuTrigger>Data</NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <ul className="grid w-[300px] gap-2 p-4">
+                    <li>
+                      <button
+                        onClick={handleExport}
+                        className="flex items-center w-full select-none space-y-1 rounded-md p-3 leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        <div className="text-left">
+                          <div className="text-sm font-medium leading-none">Export Graph</div>
+                          <p className="line-clamp-2 text-sm leading-snug text-muted-foreground">
+                            Download your mind map as a JSON file
+                          </p>
+                        </div>
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={handleImport}
+                        className="flex items-center w-full select-none space-y-1 rounded-md p-3 leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        <div className="text-left">
+                          <div className="text-sm font-medium leading-none">Import Graph</div>
+                          <p className="line-clamp-2 text-sm leading-snug text-muted-foreground">
+                            Load a mind map from a JSON file
+                          </p>
+                        </div>
+                      </button>
+                    </li>
+                  </ul>
+                </NavigationMenuContent>
               </NavigationMenuItem>
             </NavigationMenuList>
           </NavigationMenu>
@@ -509,6 +842,7 @@ export default function GraphPage() {
               onConnect={handleConnect}
               onAddNode={handleAddNode}
               onAddNodeWithParent={handleAddNodeWithParent}
+              isEditPanelOpen={isEditPanelOpen}
               className="w-full h-full"
             />
         </div>
@@ -555,6 +889,7 @@ export default function GraphPage() {
         allNodes={nodes}
         selectedNodes={selectedNodes}
         onAddParent={handleAddParent}
+        onRemoveParent={handleRemoveParent}
         isAddingNewNode={isAddingNewNode}
         edges={edges.map(e => ({ source: e.source, target: e.target }))}
       />
