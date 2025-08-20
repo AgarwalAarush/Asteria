@@ -10,7 +10,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
-import { Key, Settings as SettingsIcon, Eye, EyeOff, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { Key, Settings as SettingsIcon, Eye, EyeOff, CheckCircle, XCircle, AlertCircle, Edit2 } from 'lucide-react'
 
 interface SettingsDialogProps {
   open: boolean
@@ -68,7 +70,7 @@ const validateAPIKey = (provider: string, apiKey: string): APIKeyValidation => {
 }
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('api-keys')
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general')
   const [apiKeys, setApiKeys] = useState({
     openai: '',
     anthropic: '',
@@ -88,8 +90,21 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     grok: { isValid: false, isValidating: false },
   })
   const [isSaving, setIsSaving] = useState(false)
+  const [editingKeys, setEditingKeys] = useState({
+    openai: false,
+    anthropic: false,
+    gemini: false,
+    grok: false,
+  })
+  const [tempApiKeys, setTempApiKeys] = useState({
+    openai: '',
+    anthropic: '',
+    gemini: '',
+    grok: '',
+  })
+  const [autoTagWithAI, setAutoTagWithAI] = useState(false)
 
-  // Load API keys from localStorage on mount
+  // Load API keys and settings from localStorage on mount
   useEffect(() => {
     if (open) {
       const stored = {
@@ -99,6 +114,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         grok: localStorage.getItem('asteria-grok-key') || '',
       }
       setApiKeys(stored)
+      setTempApiKeys(stored)
+      
+      // Load auto-tag setting
+      const autoTag = localStorage.getItem('asteria-auto-tag-ai') === 'true'
+      setAutoTagWithAI(autoTag)
       
       // Validate loaded keys
       const validations: APIKeyStates = {
@@ -108,11 +128,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         grok: validateAPIKey('grok', stored.grok),
       }
       setValidationStates(validations)
+      
+      // Reset editing states
+      setEditingKeys({
+        openai: false,
+        anthropic: false,
+        gemini: false,
+        grok: false,
+      })
     }
   }, [open])
 
   const handleApiKeyChange = (provider: keyof typeof apiKeys, value: string) => {
-    setApiKeys(prev => ({ ...prev, [provider]: value }))
+    setTempApiKeys(prev => ({ ...prev, [provider]: value }))
     
     // Validate the key as user types
     const validation = validateAPIKey(provider, value)
@@ -122,6 +150,38 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }))
   }
 
+  const startEditingKey = (provider: keyof typeof apiKeys) => {
+    setEditingKeys(prev => ({ ...prev, [provider]: true }))
+    setTempApiKeys(prev => ({ ...prev, [provider]: apiKeys[provider] }))
+    setShowKeys(prev => ({ ...prev, [provider]: false }))
+  }
+
+  const cancelEditingKey = (provider: keyof typeof apiKeys) => {
+    setEditingKeys(prev => ({ ...prev, [provider]: false }))
+    setTempApiKeys(prev => ({ ...prev, [provider]: apiKeys[provider] }))
+    setValidationStates(prev => ({
+      ...prev,
+      [provider]: validateAPIKey(provider, apiKeys[provider])
+    }))
+  }
+
+  const saveApiKey = (provider: keyof typeof apiKeys) => {
+    const newKey = tempApiKeys[provider]
+    const validation = validateAPIKey(provider, newKey)
+    
+    if (validation.isValid || !newKey.trim()) {
+      setApiKeys(prev => ({ ...prev, [provider]: newKey }))
+      setEditingKeys(prev => ({ ...prev, [provider]: false }))
+      
+      // Save to localStorage
+      if (newKey.trim()) {
+        localStorage.setItem(`asteria-${provider}-key`, newKey)
+      } else {
+        localStorage.removeItem(`asteria-${provider}-key`)
+      }
+    }
+  }
+
   const toggleKeyVisibility = (provider: keyof typeof showKeys) => {
     setShowKeys(prev => ({ ...prev, [provider]: !prev[provider] }))
   }
@@ -129,25 +189,23 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      // Save to localStorage
-      Object.entries(apiKeys).forEach(([provider, key]) => {
-        if (key.trim()) {
-          localStorage.setItem(`asteria-${provider}-key`, key)
-        } else {
-          localStorage.removeItem(`asteria-${provider}-key`)
-        }
-      })
+      // Save auto-tag setting
+      localStorage.setItem('asteria-auto-tag-ai', autoTagWithAI.toString())
       
       // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 500))
       
-      alert('API keys saved successfully!')
+      alert('Settings saved successfully!')
     } catch (error) {
-      console.error('Error saving API keys:', error)
-      alert('Error saving API keys. Please try again.')
+      console.error('Error saving settings:', error)
+      alert('Error saving settings. Please try again.')
     } finally {
       setIsSaving(false)
     }
+  }
+
+  const handleAutoTagChange = (checked: boolean) => {
+    setAutoTagWithAI(checked)
   }
 
   const getValidationIcon = (validation: APIKeyValidation) => {
@@ -200,25 +258,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[180vw] w-[180vw] max-h-[85vh] overflow-hidden bg-[#191919] border-[#262626] text-white">
+      <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-x-hidden overflow-y-auto bg-white dark:bg-[#191919] border-gray-200 dark:border-[#262626] text-gray-900 dark:text-white">
+        <DialogTitle className="sr-only">Settings</DialogTitle>
         <div className="flex h-[75vh]">
           {/* Sidebar */}
-          <div className="w-56 border-r border-[#262626] pr-6">
-            <nav className="space-y-2">
-              <button
-                onClick={() => setActiveTab('api-keys')}
-                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
-                  activeTab === 'api-keys'
-                    ? 'bg-accent text-accent-foreground shadow-sm'
-                    : 'text-gray-300 hover:bg-accent hover:text-accent-foreground'
-                }`}
-              >
-                <Key className="mr-3 h-4 w-4" />
-                API Keys
-              </button>
+          <div className="w-48 border-r border-gray-200 dark:border-[#262626] pr-4">
+            <nav className="space-y-1.5">
               <button
                 onClick={() => setActiveTab('general')}
-                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
+                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
                   activeTab === 'general'
                     ? 'bg-accent text-accent-foreground shadow-sm'
                     : 'text-gray-300 hover:bg-accent hover:text-accent-foreground'
@@ -226,6 +274,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               >
                 <SettingsIcon className="mr-3 h-4 w-4" />
                 General
+              </button>
+              <button
+                onClick={() => setActiveTab('api-keys')}
+                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                  activeTab === 'api-keys'
+                    ? 'bg-accent text-accent-foreground shadow-sm'
+                    : 'text-gray-300 hover:bg-accent hover:text-accent-foreground'
+                }`}
+              >
+                <Key className="mr-3 h-4 w-4" />
+                API Keys
               </button>
             </nav>
           </div>
@@ -253,31 +312,76 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         {getValidationIcon(validationStates[provider.key])}
                       </div>
                       
-                      <div className="relative">
-                        <Input
-                          type={showKeys[provider.key] ? 'text' : 'password'}
-                          placeholder={provider.placeholder}
-                          value={apiKeys[provider.key]}
-                          onChange={(e) => handleApiKeyChange(provider.key, e.target.value)}
-                          className={`pr-12 bg-[#191919] border-[#262626] text-white placeholder:text-gray-500 focus:border-[#404040] focus:ring-0 transition-colors ${
-                            validationStates[provider.key].error ? 'border-red-500' : 
-                            validationStates[provider.key].isValid ? 'border-green-500' : ''
-                          }`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => toggleKeyVisibility(provider.key)}
-                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white transition-colors"
-                        >
-                          {showKeys[provider.key] ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
+                      {/* Show different UI based on whether key exists and editing state */}
+                      {!editingKeys[provider.key] && apiKeys[provider.key] && validationStates[provider.key].isValid ? (
+                        // Show "Change API Key" button when key is registered
+                        <div className="flex items-center justify-between p-3 bg-gray-100 dark:bg-[#262626] rounded-lg border border-gray-200 dark:border-[#404040]">
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <span className="text-sm text-gray-300">API key configured</span>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEditingKey(provider.key)}
+                            className="bg-transparent border-[#404040] text-gray-300 hover:bg-[#404040] hover:text-white"
+                          >
+                            <Edit2 className="h-3 w-3 mr-1" />
+                            Change Key
+                          </Button>
+                        </div>
+                      ) : (
+                        // Show input field for new keys or when editing
+                        <>
+                          <div className="relative">
+                            <Input
+                              type={showKeys[provider.key] ? 'text' : 'password'}
+                              placeholder={provider.placeholder}
+                              value={editingKeys[provider.key] ? tempApiKeys[provider.key] : apiKeys[provider.key]}
+                              onChange={(e) => handleApiKeyChange(provider.key, e.target.value)}
+                              className={`pr-12 bg-[#191919] border-[#262626] text-white placeholder:text-gray-500 focus:border-[#404040] focus:ring-0 transition-colors ${
+                                validationStates[provider.key].error ? 'border-red-500' : 
+                                validationStates[provider.key].isValid ? 'border-green-500' : ''
+                              }`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => toggleKeyVisibility(provider.key)}
+                              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white transition-colors"
+                            >
+                              {showKeys[provider.key] ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
+                          
+                          {/* Show save/cancel buttons when editing */}
+                          {editingKeys[provider.key] && (
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                size="sm"
+                                onClick={() => saveApiKey(provider.key)}
+                                disabled={validationStates[provider.key].error !== undefined && tempApiKeys[provider.key].trim() !== ''}
+                                className="bg-white text-black hover:bg-gray-200"
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => cancelEditingKey(provider.key)}
+                                className="bg-transparent border-[#404040] text-gray-300 hover:bg-[#404040] hover:text-white"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
                           )}
-                        </button>
-                      </div>
+                        </>
+                      )}
                       
-                      {validationStates[provider.key].error && (
+                      {validationStates[provider.key].error && (editingKeys[provider.key] || !apiKeys[provider.key]) && (
                         <p className="text-xs text-red-400">
                           {validationStates[provider.key].error}
                         </p>
@@ -327,6 +431,22 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </div>
                 
                 <div className="space-y-6">
+                  {/* Auto-tag with AI */}
+                  <div className="rounded-lg border border-[#262626] p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-medium text-white">Auto-tag with AI</h4>
+                        <p className="text-xs text-gray-400">Automatically tag ideas/nodes using your configured AI provider</p>
+                      </div>
+                      <Switch
+                        checked={autoTagWithAI}
+                        onCheckedChange={(checked) => {
+                          setAutoTagWithAI(!!checked)
+                          localStorage.setItem('asteria-auto-tag-ai', String(!!checked))
+                        }}
+                      />
+                    </div>
+                  </div>
                   <div className="rounded-lg border border-[#262626] p-6">
                     <div className="flex items-center justify-between">
                       <div>

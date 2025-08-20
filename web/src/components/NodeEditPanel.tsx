@@ -250,8 +250,8 @@ export function NodeEditPanel({
   if (!isOpen || !node) return null
 
   return (
-    <div className="fixed top-16 left-4 w-96 h-[calc(100vh-5rem)] bg-white dark:bg-black border border-gray-200 dark:border-[#191919] rounded-xl shadow-lg flex flex-col z-50">
-      <div className="p-4 border-b border-gray-200 dark:border-[#191919] flex items-center justify-between">
+    <div className="fixed top-16 left-4 w-96 h-[calc(100vh-5rem)] bg-white dark:bg-[#191919] border border-gray-200 dark:border-[#262626] rounded-xl shadow-lg flex flex-col z-50">
+      <div className="p-4 border-b border-gray-200 dark:border-[#262626] flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
           {isAddingNewNode ? 'Add Node' : 'Edit Node'}
         </h2>
@@ -270,7 +270,7 @@ export function NodeEditPanel({
           <Input
             value={formData.title || ''}
             onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-            className="border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
+            className="border-gray-200 dark:border-[#262626] bg-white dark:bg-[#262626] text-gray-900 dark:text-white"
           />
         </div>
 
@@ -281,7 +281,7 @@ export function NodeEditPanel({
             <DropdownMenuTrigger asChild>
               <Button 
                 variant="outline" 
-                className="w-full justify-between border-gray-200 dark:border-[#191919] bg-white dark:bg-black hover:bg-accent hover:text-accent-foreground"
+                className="w-full justify-between border-gray-200 dark:border-[#262626] bg-white dark:bg-[#262626] hover:bg-accent hover:text-accent-foreground"
               >
                 {formData.kind ? formData.kind.charAt(0).toUpperCase() + formData.kind.slice(1) : 'Note'}
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -289,7 +289,7 @@ export function NodeEditPanel({
                 </svg>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] bg-white dark:bg-black border-gray-200 dark:border-[#191919]">
+            <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] bg-white dark:bg-[#191919] border-gray-200 dark:border-[#262626]">
               {[
                 { value: 'problem', label: 'Problem' },
                 { value: 'solution', label: 'Solution' },
@@ -316,7 +316,7 @@ export function NodeEditPanel({
           <Textarea
             value={formData.body || ''}
             onChange={(e) => setFormData(prev => ({ ...prev, body: e.target.value }))}
-            className="min-h-[100px] resize-none border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
+            className="min-h-[100px] resize-none border-gray-200 dark:border-[#262626] bg-white dark:bg-[#262626] text-gray-900 dark:text-white"
           />
         </div>
 
@@ -350,11 +350,11 @@ export function NodeEditPanel({
               value={tagSearch}
               onChange={(e) => setTagSearch(e.target.value)}
               onKeyDown={handleTagSearchKeyDown}
-              className="border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
+              className="border-gray-200 dark:border-[#262626] bg-white dark:bg-[#262626] text-gray-900 dark:text-white"
               placeholder="Search tags or type to create new..."
             />
             {suggestedTags.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-black border border-gray-200 dark:border-[#191919] rounded-lg shadow-lg z-10">
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#191919] border border-gray-200 dark:border-[#262626] rounded-lg shadow-lg z-10">
                 {suggestedTags.map((tag, index) => (
                   <button
                     key={index}
@@ -437,11 +437,11 @@ export function NodeEditPanel({
               value={parentSearch}
               onChange={(e) => setParentSearch(e.target.value)}
               onKeyDown={handleParentSearchKeyDown}
-              className="border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
+              className="border-gray-200 dark:border-[#262626] bg-white dark:bg-[#262626] text-gray-900 dark:text-white"
               placeholder="Search to add parent nodes..."
             />
             {suggestedParents.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-black border border-gray-200 dark:border-[#191919] rounded-lg shadow-lg z-10">
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#191919] border border-gray-200 dark:border-[#262626] rounded-lg shadow-lg z-10">
                 {suggestedParents.map((parentNode, index) => (
                   <button
                     key={parentNode.id}
@@ -476,7 +476,7 @@ export function NodeEditPanel({
                   ...prev, 
                   scorePainkiller: e.target.value ? parseInt(e.target.value) : undefined 
                 }))}
-                className="border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
+                className="border-gray-200 dark:border-[#262626] bg-white dark:bg-[#262626] text-gray-900 dark:text-white"
               />
             </div>
             <div>
@@ -490,7 +490,7 @@ export function NodeEditPanel({
                   ...prev, 
                   scoreFounderFit: e.target.value ? parseInt(e.target.value) : undefined 
                 }))}
-                className="border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
+                className="border-gray-200 dark:border-[#262626] bg-white dark:bg-[#262626] text-gray-900 dark:text-white"
               />
             </div>
             <div>
@@ -504,7 +504,7 @@ export function NodeEditPanel({
                   ...prev, 
                   scoreTiming: e.target.value ? parseInt(e.target.value) : undefined 
                 }))}
-                className="border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
+                className="border-gray-200 dark:border-[#262626] bg-white dark:bg-[#262626] text-gray-900 dark:text-white"
               />
             </div>
             <div>
@@ -518,7 +518,7 @@ export function NodeEditPanel({
                   ...prev, 
                   scoreMoat: e.target.value ? parseInt(e.target.value) : undefined 
                 }))}
-                className="border-gray-200 dark:border-[#191919] bg-white dark:bg-black text-gray-900 dark:text-white"
+                className="border-gray-200 dark:border-[#262626] bg-white dark:bg-[#262626] text-gray-900 dark:text-white"
               />
             </div>
             <div className="col-span-2">
@@ -539,7 +539,7 @@ export function NodeEditPanel({
         </div>
       </div>
 
-      <div className="p-4 border-t border-gray-200 dark:border-[#191919]">
+      <div className="p-4 border-t border-gray-200 dark:border-[#262626]">
         <div className="flex flex-col gap-2">
           <div className="flex gap-2">
             <Button 

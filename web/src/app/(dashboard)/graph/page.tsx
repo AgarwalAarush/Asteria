@@ -173,6 +173,25 @@ export default function GraphPage() {
     }
   }, [loadedNodes, loadedEdges, isLoadingData, layoutFunctions])
 
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts if user is typing in an input/textarea
+      const target = e.target as HTMLElement
+      const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+      
+      if (isTyping) return
+
+      // Toggle AI Assistant with 'a' key when not focused on edit panels
+      if (e.key.toLowerCase() === 'a' && !isEditPanelOpen && !isAIFocused) {
+        e.preventDefault()
+        setIsAIAssistantOpen(!isAIAssistantOpen)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isEditPanelOpen, isAIFocused, isAIAssistantOpen])
 
   // Handle node selection (with multi-select support)
   const handleNodeClick = useCallback((node: Node<ReactFlowNodeDataType>, event?: React.MouseEvent) => {
@@ -755,13 +774,6 @@ export default function GraphPage() {
           </NavigationMenu>
 
           <div className="ml-auto flex items-center gap-4">
-            <ThemeToggle />
-            <button
-              onClick={handleLogout}
-              className="px-3 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
-            >
-              Logout
-            </button>
             <button
               onClick={() => setIsAIAssistantOpen(!isAIAssistantOpen)}
               className="px-3 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
@@ -770,6 +782,13 @@ export default function GraphPage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <polygon points="12,2 15.09,8.26 22,9 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9 8.91,8.26" fill="currentColor"/>
               </svg>
+            </button>
+            <ThemeToggle />
+            <button
+              onClick={handleLogout}
+              className="px-3 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+            >
+              Logout
             </button>
           </div>
         </header>
@@ -798,8 +817,8 @@ export default function GraphPage() {
 
       {/* AI Assistant Floating Window */}
       {isAIAssistantOpen && (
-        <div className="fixed top-16 right-4 w-72 h-[calc(100vh-5rem)] bg-white dark:bg-black border border-gray-200 dark:border-[#191919] rounded-xl shadow-lg flex flex-col z-50">
-          <div className="p-4 border-b border-gray-200 dark:border-[#191919] flex items-center justify-between">
+        <div className="fixed top-16 right-4 w-72 h-[calc(100vh-5rem)] bg-white dark:bg-[#191919] border border-gray-200 dark:border-[#262626] rounded-xl shadow-lg flex flex-col z-50">
+          <div className="p-4 border-b border-gray-200 dark:border-[#262626] flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">AI Assistant</h2>
             <button
               onClick={() => setIsAIAssistantOpen(false)}
