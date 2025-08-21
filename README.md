@@ -1,4 +1,14 @@
-# Asteria
+<div align="center">
+
+<img src="web/public/asteria-icon.png" alt="Asteria App Icon" width="128" height="128">
+
+<h1>Asteria</h1>
+
+*Asteria - AI-Powered Mind Mapping for Startup Ideation*
+
+---
+
+</div># Asteria
 
 An AI-powered mind-mapping application for startup ideas and business concepts. Create interconnected graphs of problems, solutions, markets, technologies, and themes with intelligent content generation and relationship suggestions.
 
