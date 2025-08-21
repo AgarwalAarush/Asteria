@@ -74,23 +74,18 @@ export async function decryptFromPayload(secret: string, payload: EncryptedPaylo
 const prefix = 'asteria-sec-key-'
 
 export async function secureSave(provider: string, apiKey: string, secret: string): Promise<void> {
-  const payload = await encryptToPayload(secret, apiKey)
-  localStorage.setItem(prefix + provider, JSON.stringify(payload))
+  // localStorage disabled for app data - API keys not saved
+  return
 }
 
 export async function secureLoad(provider: string, secret: string): Promise<string | ''> {
-  const raw = localStorage.getItem(prefix + provider)
-  if (!raw) return ''
-  try {
-    const payload = JSON.parse(raw) as EncryptedPayload
-    return await decryptFromPayload(secret, payload)
-  } catch {
-    return ''
-  }
+  // localStorage disabled for app data
+  return ''
 }
 
 export function secureHas(provider: string): boolean {
-  return !!localStorage.getItem(prefix + provider)
+  // localStorage disabled for app data
+  return false
 }
 
 

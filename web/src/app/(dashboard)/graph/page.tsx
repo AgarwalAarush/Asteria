@@ -44,87 +44,7 @@ function AsteriaLogo() {
   )
 }
 
-// Sample data for initial development
-const sampleNodes: Node<ReactFlowNodeDataType>[] = [
-  {
-    id: '1',
-    type: 'ideaNode',
-    position: { x: 0, y: 0 },
-    data: {
-      id: '1',
-      title: 'Remote work productivity issues',
-      kind: 'problem',
-      body: 'Many remote workers struggle with focus and productivity due to distractions at home.',
-      tags: ['remote-work', 'productivity'],
-      scorePainkiller: 4,
-      scoreFounderFit: 3,
-      scoreTiming: 5,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  },
-  {
-    id: '2',
-    type: 'ideaNode',
-    position: { x: 400, y: -100 },
-    data: {
-      id: '2',
-      title: 'AI-powered focus assistant',
-      kind: 'solution',
-      body: 'An AI assistant that helps remote workers maintain focus by blocking distractions and providing structured work sessions.',
-      tags: ['ai', 'productivity', 'focus'],
-      scorePracticality: 4,
-      scoreMoat: 3,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  },
-  {
-    id: '3',
-    type: 'ideaNode',
-    position: { x: 400, y: 100 },
-    data: {
-      id: '3',
-      title: 'Remote work tools market',
-      kind: 'market',
-      body: 'The remote work tools market is growing rapidly, with companies spending more on productivity software.',
-      tags: ['market-research', 'remote-work'],
-      scoreTiming: 5,
-      scoreFounderFit: 2,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  },
-]
-
-const sampleEdges: Edge<ReactFlowEdgeDataType>[] = [
-  {
-    id: 'e1-2',
-    source: '1',
-    target: '2',
-    type: 'relationEdge',
-    data: {
-      id: 'e1-2',
-      source: '1',
-      target: '2',
-      relation: 'related',
-      weight: 0.8,
-    },
-  },
-  {
-    id: 'e1-3',
-    source: '1',
-    target: '3',
-    type: 'relationEdge',
-    data: {
-      id: 'e1-3',
-      source: '1',
-      target: '3',
-      relation: 'related',
-      weight: 0.6,
-    },
-  },
-]
+// Clean start - no sample data
 
 export default function GraphPage() {
   const { user, loading, supabase } = useSupabase()
@@ -132,9 +52,9 @@ export default function GraphPage() {
   // Load data from database on mount
   const { nodes: loadedNodes, edges: loadedEdges, isLoading: isLoadingData, error: loadError, refresh: refreshData } = useGraphData()
   
-  // Use loaded data or fallback to sample data
-  const [nodes, setNodes] = useState<Node<ReactFlowNodeDataType>[]>(loadedNodes.length > 0 ? loadedNodes : sampleNodes)
-  const [edges, setEdges] = useState<Edge<ReactFlowEdgeDataType>[]>(loadedEdges.length > 0 ? loadedEdges : sampleEdges)
+  // Use loaded data with empty fallback
+  const [nodes, setNodes] = useState<Node<ReactFlowNodeDataType>[]>(loadedNodes)
+  const [edges, setEdges] = useState<Edge<ReactFlowEdgeDataType>[]>(loadedEdges)
   
   // Auto-save changes to database
   const { saveNow, isSaving } = useAutoSave(nodes, edges, {
@@ -166,13 +86,13 @@ export default function GraphPage() {
     relayoutFrom: (nodeId: string) => void
   } | null>(null)
 
-  // Check for demo mode in localStorage - MUST be at top level
+  // Update local state when data loads from database
   useEffect(() => {
-    const demoMode = localStorage.getItem('asteria-demo-mode')
-    if (demoMode === 'true') {
-      setIsDemoMode(true)
-    }
-  }, [])
+    setNodes(loadedNodes)
+    setEdges(loadedEdges)
+  }, [loadedNodes, loadedEdges])
+
+  // Removed localStorage demo mode logic
   
   // Update local state when data loads from database
   useEffect(() => {
@@ -223,17 +143,30 @@ export default function GraphPage() {
     if (nodesToDelete.length === 0) return
 
     try {
-      // Delete each node from database first
       const nodeIdsToDelete = nodesToDelete.map(n => n.id)
-      await Promise.all(nodeIdsToDelete.map(nodeId => DatabaseService.deleteNode(nodeId)))
+      console.log('Optimistic deletion of nodes with IDs:', nodeIdsToDelete)
       
-      // Only update local state after successful database deletions
-      setNodes(prev => prev.filter(node => !nodesToDelete.some(delNode => delNode.id === node.id)))
-      
-      // Remove connected edges (they should already be deleted by the database cascade)
+      // STEP 1: Instant UI update (optimistic)
+      setNodes(prev => prev.filter(node => !nodeIdsToDelete.includes(node.id)))
       setEdges(prev => prev.filter(edge => 
         !nodeIdsToDelete.includes(edge.source) && !nodeIdsToDelete.includes(edge.target)
       ))
+      
+      // STEP 2: Background database sync (async)
+      // Don't await - let it happen in background
+      Promise.all(nodeIdsToDelete.map(async (nodeId) => {
+        try {
+          await DatabaseService.deleteNode(nodeId)
+          console.log(`Database deletion successful: ${nodeId}`)
+        } catch (error) {
+          console.error(`Database deletion failed for ${nodeId}:`, error)
+          // TODO: Implement conflict resolution or retry logic
+        }
+      })).catch(error => {
+        console.error('Batch deletion had failures:', error)
+        // In a production app, you might want to refresh data from server
+        // or implement more sophisticated conflict resolution
+      })
 
       // Clear selection
       setSelectedNodes([])
@@ -249,9 +182,13 @@ export default function GraphPage() {
         }
       }, 100)
     } catch (error) {
-      console.error('Failed to delete nodes from database:', error)
-      alert('Failed to delete some nodes. Please try again.')
-      // Keep dialog open for retry
+      console.error('Unexpected error during node deletion:', error)
+      alert('An unexpected error occurred during deletion. Please check the console and try again.')
+      
+      // Still clean up UI state
+      setSelectedNodes([])
+      setIsDeleteDialogOpen(false)
+      setNodesToDelete([])
     }
   }, [nodesToDelete, layoutFunctions])
 
@@ -418,7 +355,12 @@ export default function GraphPage() {
   // Handle deleting nodes
   const handleDeleteNode = useCallback(async (nodeId: string) => {
     try {
+      // First, ensure current graph state is saved to database
+      console.log('Ensuring graph is saved before individual node deletion...')
+      await saveNow()
+      
       // Delete from database first
+      console.log('Attempting to delete individual node with ID:', nodeId)
       await DatabaseService.deleteNode(nodeId)
       
       // Only update local state after successful database deletion

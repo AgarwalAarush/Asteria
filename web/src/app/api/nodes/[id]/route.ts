@@ -21,16 +21,20 @@ export async function DELETE(
       return NextResponse.json({ error: 'Node not found' }, { status: 404 })
     }
 
-    // Perform deletion in transaction with proper error handling
-    await prisma.$transaction(async (tx) => {
+    // Perform deletion without complex transaction to avoid timeouts
+    try {
       // Delete node-tag associations first
-      const deletedNodeTags = await tx.nodeTag.deleteMany({
+      const deletedNodeTags = await prisma.nodeTag.deleteMany({
         where: { nodeId }
       })
       console.log(`Deleted ${deletedNodeTags.count} node-tag associations for node ${nodeId}`)
-      
+    } catch (error) {
+      console.warn(`Failed to delete node-tag associations for ${nodeId}:`, error)
+    }
+    
+    try {
       // Delete edges involving this node
-      const deletedEdges = await tx.edge.deleteMany({
+      const deletedEdges = await prisma.edge.deleteMany({
         where: {
           OR: [
             { sourceId: nodeId },
@@ -39,13 +43,21 @@ export async function DELETE(
         }
       })
       console.log(`Deleted ${deletedEdges.count} edges for node ${nodeId}`)
-      
-      // Delete the node itself
-      const deletedNode = await tx.node.delete({
+    } catch (error) {
+      console.warn(`Failed to delete edges for ${nodeId}:`, error)
+    }
+    
+    // Delete the node itself (most important operation)
+    try {
+      const deletedNode = await prisma.node.delete({
         where: { id: nodeId }
       })
       console.log(`Successfully deleted node ${nodeId}`)
-    })
+    } catch (error) {
+      // If node deletion fails due to foreign key constraints, log and throw
+      console.error(`Failed to delete node ${nodeId}:`, error)
+      throw new Error(`Node deletion failed: ${error.message}`)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

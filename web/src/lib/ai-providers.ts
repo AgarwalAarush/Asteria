@@ -50,20 +50,11 @@ export const validateAPIKey = (provider: string, apiKey: string): { isValid: boo
 import { secureLoad } from '@/lib/secure-store'
 
 export const getValidProviders = async (): Promise<AIProvider[]> => {
-  const secret = (typeof window !== 'undefined')
-    ? (localStorage.getItem('asteria-local-secret') || '')
-    : ''
+  // localStorage disabled for app data - no saved API keys
   const results: AIProvider[] = []
   for (const provider of AI_PROVIDERS) {
-    let apiKey = ''
-    if (secret) {
-      try {
-        apiKey = await secureLoad(provider.key, secret) || ''
-      } catch {}
-    }
-    if (!apiKey && typeof window !== 'undefined') {
-      apiKey = localStorage.getItem(`asteria-${provider.key}-key`) || ''
-    }
+    // No API keys available from storage - providers need keys entered each session
+    const apiKey = ''
     if (validateAPIKey(provider.key, apiKey).isValid) {
       results.push(provider)
     }

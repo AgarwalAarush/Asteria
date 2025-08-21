@@ -35,6 +35,8 @@ export class DatabaseService {
   // Save all graph data (nodes and edges) in a single call
   static async saveGraphData(nodes: ReactFlowNode[], edges: ReactFlowEdge[]): Promise<void> {
     try {
+      console.log('Saving graph data with', nodes.length, 'nodes and', edges.length, 'edges')
+      
       // Clean nodes by removing React Flow specific properties
       const cleanNodes = nodes.map(node => ({
         id: node.id,
@@ -67,6 +69,8 @@ export class DatabaseService {
         console.error('Save failed with status:', response.status, 'Error:', errorText)
         throw new Error(`Failed to save graph data: ${response.status} ${errorText}`)
       }
+      
+      console.log('Graph data saved successfully')
     } catch (error) {
       console.error('Error saving graph data:', error)
       throw error
@@ -76,6 +80,7 @@ export class DatabaseService {
   // Delete a node and its associated edges and tags
   static async deleteNode(nodeId: string): Promise<void> {
     try {
+      console.log('DatabaseService.deleteNode called with ID:', nodeId)
       const response = await fetch(`/api/nodes/${nodeId}`, {
         method: 'DELETE',
       })
@@ -83,6 +88,13 @@ export class DatabaseService {
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Delete node failed with status:', response.status, 'Error:', errorText)
+        
+        // If node doesn't exist (404), consider it already deleted - don't throw error
+        if (response.status === 404) {
+          console.warn(`Node ${nodeId} not found in database, considering it already deleted`)
+          return
+        }
+        
         throw new Error(`Failed to delete node: ${response.status} ${errorText}`)
       }
     } catch (error) {

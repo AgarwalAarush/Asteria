@@ -74,8 +74,9 @@ export function buildXMLSystemPrompt(params: {
   userPrompt?: string
   allNodes: Array<{ id: string; data: ReactFlowNodeDataType }>
   referencedNodeIds?: string[]
+  webSearchEnabled?: boolean
 }): string {
-  const { userPrompt, allNodes, referencedNodeIds = [] } = params
+  const { userPrompt, allNodes, referencedNodeIds = [], webSearchEnabled = false } = params
 
   // Calculate next available node ID based on existing nodes
   const extractNodeNumber = (id: string): number => {
@@ -123,6 +124,11 @@ export function buildXMLSystemPrompt(params: {
     '',
     'CONTEXT: This is a mind-mapping tool for entrepreneurs to explore business ideas, problems, solutions, markets, and technologies.',
     '',
+    ...(webSearchEnabled ? [
+      'WEB SEARCH ENABLED: You have access to real-time web search capabilities. Use current market data, trends, competitor analysis, and recent developments to enhance your suggestions.',
+      'Incorporate up-to-date information about market conditions, emerging technologies, and competitive landscape.',
+      ''
+    ] : []),
     'NODE CREATION GUIDELINES:',
     '- Use clear, concise titles (2-6 words)',
     '- Choose appropriate node types based on content',
@@ -189,22 +195,12 @@ function extractFirstJSONObject(text: string): any | null {
 export async function callAIProvider(params: {
   provider: string
   xmlSystemPrompt: string
+  webSearchEnabled?: boolean
 }): Promise<AISuggestionsResult> {
-  const { provider, xmlSystemPrompt } = params
+  const { provider, xmlSystemPrompt, webSearchEnabled = false } = params
   let key: string | null = null
-  if (typeof window !== 'undefined') {
-    // Prefer secure storage
-    try {
-      const { secureLoad } = await import('@/lib/secure-store')
-      const secret = localStorage.getItem('asteria-local-secret') || ''
-      key = secret ? await secureLoad(provider, secret) : null
-    } catch {
-      key = null
-    }
-    if (!key) {
-      key = localStorage.getItem(`asteria-${provider}-key`)
-    }
-  }
+  // localStorage disabled - API keys must be entered each session
+  key = null
   if (!key) throw new Error(`Missing API key for provider: ${provider}`)
 
   if (provider === 'openai') {
