@@ -5,6 +5,7 @@
 <h1>Asteria</h1>
 
 *Asteria - AI-Powered Mind Mapping for Startup Ideation*
+
 <img src="web/public/example.png" alt="Asteria Example" width="1000" height="560">
 
 ---
