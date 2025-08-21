@@ -35,12 +35,31 @@ export class DatabaseService {
   // Save all graph data (nodes and edges) in a single call
   static async saveGraphData(nodes: ReactFlowNode[], edges: ReactFlowEdge[]): Promise<void> {
     try {
+      // Clean nodes by removing React Flow specific properties
+      const cleanNodes = nodes.map(node => ({
+        id: node.id,
+        type: node.type,
+        position: node.position,
+        data: node.data
+        // Remove selected, dragging, etc. React Flow properties
+      }))
+
+      // Clean edges by removing React Flow specific properties  
+      const cleanEdges = edges.map(edge => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: edge.type,
+        data: edge.data
+        // Remove selected, animated, etc. React Flow properties
+      }))
+
       const response = await fetch('/api/graph', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ nodes, edges }),
+        body: JSON.stringify({ nodes: cleanNodes, edges: cleanEdges }),
       })
       
       if (!response.ok) {

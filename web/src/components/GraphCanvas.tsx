@@ -17,6 +17,7 @@ import ReactFlow, {
   NodeProps,
   applyNodeChanges,
   applyEdgeChanges,
+  Controls,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
@@ -306,6 +307,7 @@ export function GraphCanvas({
         proOptions={proOptions}
       >
         <Background className="bg-white dark:bg-black" />
+        <Controls />
       </ReactFlow>
     </div>
   )

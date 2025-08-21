@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Node, Edge } from 'reactflow'
 import {
   Sidebar,
@@ -39,6 +39,9 @@ interface AISidebarProps extends React.ComponentProps<typeof Sidebar> {
   selectedNodes: Node<ReactFlowNodeDataType>[]
   onAIAction?: (mode: AIModeType, context: any) => void
   onFocusChange?: (isFocused: boolean) => void
+  onAddNode?: (node: Node<ReactFlowNodeDataType>) => void
+  onAddEdge?: (edge: Edge<ReactFlowEdgeDataType>) => void
+  onRelayout?: () => void
 }
 
 export function AISidebar({
@@ -47,6 +50,9 @@ export function AISidebar({
   selectedNodes,
   onAIAction,
   onFocusChange,
+  onAddNode,
+  onAddEdge,
+  onRelayout,
   ...props
 }: AISidebarProps) {
   const [isLoading, setIsLoading] = useState(false)
@@ -55,6 +61,79 @@ export function AISidebar({
   const [selectedProvider, setSelectedProvider] = useState<AIProvider | undefined>()
   const [aiMentions, setAiMentions] = useState<Array<{ id: string; title: string }>>([])
   const [aiResults, setAiResults] = useState<AISuggestionsResult | null>(null)
+
+  // Add suggested node to graph
+  const handleAddSuggestedNode = (node: any, index: number) => {
+    if (!onAddNode) return
+    
+    const position = { x: Math.random() * 400, y: Math.random() * 400 }
+    const newNode: Node<ReactFlowNodeDataType> = {
+      id: node.id,
+      type: 'ideaNode',
+      position,
+      data: {
+        id: node.id,
+        title: node.title,
+        kind: node.kind,
+        body: node.body || '',
+        tags: node.tags || [],
+        scorePainkiller: node.score?.painkiller,
+        scoreFounderFit: node.score?.founderFit,
+        scoreTiming: node.score?.timing,
+        scoreMoat: node.score?.moat,
+        scorePracticality: node.score?.practicality,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    }
+    onAddNode(newNode)
+    
+    // Trigger layout after adding node
+    setTimeout(() => {
+      if (onRelayout) onRelayout()
+    }, 100)
+  }
+
+  // Add suggested edge to graph
+  const handleAddSuggestedEdge = (edge: any, index: number) => {
+    if (!onAddEdge) return
+    
+    const newEdge: Edge<ReactFlowEdgeDataType> = {
+      id: `edge-${Date.now()}-${index}`,
+      source: edge.sourceId,
+      target: edge.targetId,
+      type: 'relationEdge',
+      data: {
+        id: `edge-${Date.now()}-${index}`,
+        source: edge.sourceId,
+        target: edge.targetId,
+        relation: edge.relation,
+        weight: edge.confidence,
+      },
+    }
+    onAddEdge(newEdge)
+    
+    // Trigger layout after adding edge
+    setTimeout(() => {
+      if (onRelayout) onRelayout()
+    }, 100)
+  }
+
+  // Add all suggested nodes to graph
+  const handleAddAllNodes = () => {
+    if (!aiResults?.nodes || !onAddNode) return
+    aiResults.nodes.forEach((node, index) => {
+      handleAddSuggestedNode(node, index)
+    })
+  }
+
+  // Add all suggested edges to graph
+  const handleAddAllEdges = () => {
+    if (!aiResults?.edges || !onAddEdge) return
+    aiResults.edges.forEach((edge, index) => {
+      handleAddSuggestedEdge(edge, index)
+    })
+  }
 
   // AI Assistant handlers
   const handleAIAction = async () => {
@@ -86,6 +165,72 @@ export function AISidebar({
           <SidebarGroupLabel>AI Assistant</SidebarGroupLabel>
           <SidebarGroupContent>
             <div className="space-y-4">
+              {/* AI results section - moved above input */}
+              {aiResults && (aiResults.nodes.length > 0 || aiResults.edges.length > 0) && (
+                <div className="space-y-3">
+                  {aiResults.nodes.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Suggested Nodes</div>
+                        <Button size="sm" variant="outline" onClick={handleAddAllNodes}>
+                          Add All
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        {aiResults.nodes.map((node, idx) => (
+                          <div key={`ai-node-${idx}`} className="border border-gray-200 dark:border-[#262626] rounded-md p-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-semibold text-gray-900 dark:text-white">{node.title}</div>
+                                <div className="text-[11px] text-gray-500 dark:text-gray-400">{node.kind}</div>
+                                {node.body && <div className="mt-1 text-xs text-gray-700 dark:text-gray-300 line-clamp-3">{node.body}</div>}
+                                {node.tags && node.tags.length > 0 && (
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {node.tags.map((t, i) => (
+                                      <span key={i} className="px-1 py-0.5 text-[10px] rounded bg-gray-100 dark:bg-[#191919] border border-gray-200 dark:border-[#262626]">{t}</span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <Button size="sm" variant="ghost" onClick={() => handleAddSuggestedNode(node, idx)}>
+                                +
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {aiResults.edges.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Suggested Edges</div>
+                        <Button size="sm" variant="outline" onClick={handleAddAllEdges}>
+                          Add All
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        {aiResults.edges.map((edge, idx) => (
+                          <div key={`ai-edge-${idx}`} className="border border-gray-200 dark:border-[#262626] rounded-md p-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm text-gray-900 dark:text-white">{edge.sourceId} → {edge.targetId}</div>
+                                <div className="text-[11px] text-gray-500 dark:text-gray-400">{edge.relation} · conf {edge.confidence?.toFixed?.(2) ?? edge.confidence}</div>
+                                {edge.rationale && <div className="mt-1 text-xs text-gray-700 dark:text-gray-300 line-clamp-3">{edge.rationale}</div>}
+                              </div>
+                              <Button size="sm" variant="ghost" onClick={() => handleAddSuggestedEdge(edge, idx)}>
+                                +
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Unified input container with border */}
               <div className="border border-gray-200 dark:border-[#262626] rounded-lg bg-white dark:bg-[#262626] p-3">
                 <div className="space-y-2">
@@ -97,6 +242,7 @@ export function AISidebar({
                       onChange={(t, mentions) => { setPrompt(t); setAiMentions(mentions || []) }}
                       onFocusChange={(f) => onFocusChange?.(f)}
                       className="text-gray-900 dark:text-white"
+                      initialMentions={selectedNodes.map(node => ({ id: node.id, title: node.data.title }))}
                     />
                     {webSearchEnabled && (
                       <div className="absolute bottom-1 left-0">
@@ -165,47 +311,6 @@ export function AISidebar({
                 </div>
               )}
 
-              {/* AI results section */}
-              {aiResults && (aiResults.nodes.length > 0 || aiResults.edges.length > 0) && (
-                <div className="space-y-3">
-                  {aiResults.nodes.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Suggested Nodes</div>
-                      <div className="grid grid-cols-1 gap-2">
-                        {aiResults.nodes.map((node, idx) => (
-                          <div key={`ai-node-${idx}`} className="border border-gray-200 dark:border-[#262626] rounded-md p-2">
-                            <div className="text-sm font-semibold text-gray-900 dark:text-white">{node.title}</div>
-                            <div className="text-[11px] text-gray-500 dark:text-gray-400">{node.kind}</div>
-                            {node.body && <div className="mt-1 text-xs text-gray-700 dark:text-gray-300 line-clamp-3">{node.body}</div>}
-                            {node.tags && node.tags.length > 0 && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {node.tags.map((t, i) => (
-                                  <span key={i} className="px-1 py-0.5 text-[10px] rounded bg-gray-100 dark:bg-[#191919] border border-gray-200 dark:border-[#262626]">{t}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {aiResults.edges.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Suggested Edges</div>
-                      <div className="grid grid-cols-1 gap-2">
-                        {aiResults.edges.map((edge, idx) => (
-                          <div key={`ai-edge-${idx}`} className="border border-gray-200 dark:border-[#262626] rounded-md p-2">
-                            <div className="text-sm text-gray-900 dark:text-white">{edge.sourceId} → {edge.targetId}</div>
-                            <div className="text-[11px] text-gray-500 dark:text-gray-400">{edge.relation} · conf {edge.confidence?.toFixed?.(2) ?? edge.confidence}</div>
-                            {edge.rationale && <div className="mt-1 text-xs text-gray-700 dark:text-gray-300 line-clamp-3">{edge.rationale}</div>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -222,6 +327,9 @@ export function AIOverlay({
   selectedNodes,
   onAIAction,
   onFocusChange,
+  onAddNode,
+  onAddEdge,
+  onRelayout,
 }: AISidebarProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [prompt, setPrompt] = useState('')
@@ -229,6 +337,79 @@ export function AIOverlay({
   const [selectedProvider, setSelectedProvider] = useState<AIProvider | undefined>()
   const [aiMentions, setAiMentions] = useState<Array<{ id: string; title: string }>>([])
   const [aiResults, setAiResults] = useState<AISuggestionsResult | null>(null)
+
+  // Add suggested node to graph
+  const handleAddSuggestedNode = (node: any, index: number) => {
+    if (!onAddNode) return
+    
+    const position = { x: Math.random() * 400, y: Math.random() * 400 }
+    const newNode: Node<ReactFlowNodeDataType> = {
+      id: node.id,
+      type: 'ideaNode',
+      position,
+      data: {
+        id: node.id,
+        title: node.title,
+        kind: node.kind,
+        body: node.body || '',
+        tags: node.tags || [],
+        scorePainkiller: node.score?.painkiller,
+        scoreFounderFit: node.score?.founderFit,
+        scoreTiming: node.score?.timing,
+        scoreMoat: node.score?.moat,
+        scorePracticality: node.score?.practicality,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    }
+    onAddNode(newNode)
+    
+    // Trigger layout after adding node
+    setTimeout(() => {
+      if (onRelayout) onRelayout()
+    }, 100)
+  }
+
+  // Add suggested edge to graph
+  const handleAddSuggestedEdge = (edge: any, index: number) => {
+    if (!onAddEdge) return
+    
+    const newEdge: Edge<ReactFlowEdgeDataType> = {
+      id: `edge-${Date.now()}-${index}`,
+      source: edge.sourceId,
+      target: edge.targetId,
+      type: 'relationEdge',
+      data: {
+        id: `edge-${Date.now()}-${index}`,
+        source: edge.sourceId,
+        target: edge.targetId,
+        relation: edge.relation,
+        weight: edge.confidence,
+      },
+    }
+    onAddEdge(newEdge)
+    
+    // Trigger layout after adding edge
+    setTimeout(() => {
+      if (onRelayout) onRelayout()
+    }, 100)
+  }
+
+  // Add all suggested nodes to graph
+  const handleAddAllNodes = () => {
+    if (!aiResults?.nodes || !onAddNode) return
+    aiResults.nodes.forEach((node, index) => {
+      handleAddSuggestedNode(node, index)
+    })
+  }
+
+  // Add all suggested edges to graph
+  const handleAddAllEdges = () => {
+    if (!aiResults?.edges || !onAddEdge) return
+    aiResults.edges.forEach((edge, index) => {
+      handleAddSuggestedEdge(edge, index)
+    })
+  }
 
   const handleAIAction = async () => {
     if (!selectedProvider) return
@@ -254,6 +435,72 @@ export function AIOverlay({
   return (
     <div className="w-full space-y-4">
       <div className="space-y-3">
+        {/* AI results section - moved above input */}
+        {aiResults && (aiResults.nodes.length > 0 || aiResults.edges.length > 0) && (
+          <div className="space-y-3">
+            {aiResults.nodes.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Suggested Nodes</div>
+                  <Button size="sm" variant="outline" onClick={handleAddAllNodes}>
+                    Add All
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {aiResults.nodes.map((node, idx) => (
+                    <div key={`ai-node-${idx}`} className="border border-gray-200 dark:border-[#262626] rounded-md p-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white">{node.title}</div>
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400">{node.kind}</div>
+                          {node.body && <div className="mt-1 text-xs text-gray-700 dark:text-gray-300 line-clamp-3">{node.body}</div>}
+                          {node.tags && node.tags.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {node.tags.map((t, i) => (
+                                <span key={i} className="px-1 py-0.5 text-[10px] rounded bg-gray-100 dark:bg-[#191919] border border-gray-200 dark:border-[#262626]">{t}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <Button size="sm" variant="ghost" onClick={() => handleAddSuggestedNode(node, idx)}>
+                          +
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {aiResults.edges.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Suggested Edges</div>
+                  <Button size="sm" variant="outline" onClick={handleAddAllEdges}>
+                    Add All
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {aiResults.edges.map((edge, idx) => (
+                    <div key={`ai-edge-${idx}`} className="border border-gray-200 dark:border-[#262626] rounded-md p-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-gray-900 dark:text-white">{edge.sourceId} → {edge.targetId}</div>
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400">{edge.relation} · conf {edge.confidence?.toFixed?.(2) ?? edge.confidence}</div>
+                          {edge.rationale && <div className="mt-1 text-xs text-gray-700 dark:text-gray-300 line-clamp-3">{edge.rationale}</div>}
+                        </div>
+                        <Button size="sm" variant="ghost" onClick={() => handleAddSuggestedEdge(edge, idx)}>
+                          +
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Unified input container with border */}
         <div className="border border-gray-200 dark:border-[#262626] rounded-lg bg-white dark:bg-[#262626] p-3">
           <div className="space-y-2">
@@ -265,6 +512,7 @@ export function AIOverlay({
                 onChange={(t, mentions) => { setPrompt(t); setAiMentions(mentions || []) }}
                 onFocusChange={(f) => onFocusChange?.(f)}
                 className="text-gray-900 dark:text-white"
+                initialMentions={selectedNodes.map(node => ({ id: node.id, title: node.data.title }))}
               />
               {webSearchEnabled && (
                 <div className="absolute bottom-1 left-0">
@@ -324,46 +572,6 @@ export function AIOverlay({
           </div>
         )}
 
-        {aiResults && (aiResults.nodes.length > 0 || aiResults.edges.length > 0) && (
-          <div className="space-y-3">
-            {aiResults.nodes.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Suggested Nodes</div>
-                <div className="grid grid-cols-1 gap-2">
-                  {aiResults.nodes.map((node, idx) => (
-                    <div key={`ai-node-${idx}`} className="border border-gray-200 dark:border-[#262626] rounded-md p-2">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-white">{node.title}</div>
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400">{node.kind}</div>
-                      {node.body && <div className="mt-1 text-xs text-gray-700 dark:text-gray-300 line-clamp-3">{node.body}</div>}
-                      {node.tags && node.tags.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {node.tags.map((t, i) => (
-                            <span key={i} className="px-1 py-0.5 text-[10px] rounded bg-gray-100 dark:bg-[#191919] border border-gray-200 dark:border-[#262626]">{t}</span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {aiResults.edges.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Suggested Edges</div>
-                <div className="grid grid-cols-1 gap-2">
-                  {aiResults.edges.map((edge, idx) => (
-                    <div key={`ai-edge-${idx}`} className="border border-gray-200 dark:border-[#262626] rounded-md p-2">
-                      <div className="text-sm text-gray-900 dark:text-white">{edge.sourceId} → {edge.targetId}</div>
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400">{edge.relation} · conf {edge.confidence?.toFixed?.(2) ?? edge.confidence}</div>
-                      {edge.rationale && <div className="mt-1 text-xs text-gray-700 dark:text-gray-300 line-clamp-3">{edge.rationale}</div>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )

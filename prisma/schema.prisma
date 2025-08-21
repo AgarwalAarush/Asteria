@@ -61,7 +61,7 @@ enum Role {
 }
 
 model Node {
-  id                 String    @id @default(cuid())
+  id                 String    @id
   spaceId            String
   title              String
   kind               NodeKind
@@ -92,7 +92,7 @@ enum NodeKind {
 }
 
 model Edge {
-  id       String   @id @default(cuid())
+  id       String   @id
   spaceId  String
   sourceId String
   targetId String

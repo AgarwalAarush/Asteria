@@ -20,6 +20,7 @@ export const ScoreSchema = z.object({
 
 // Draft schemas for AI-generated content
 export const IdeaNodeDraft = z.object({
+  id: z.string(),
   title: z.string().min(1),
   kind: NodeKindSchema,
   body: z.string().optional(),

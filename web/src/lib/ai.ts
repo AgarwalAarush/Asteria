@@ -6,26 +6,56 @@ export interface AISuggestionsResult {
 }
 
 function buildSchemasXML(): string {
+  const nodeTypeGuide = {
+    problem: 'Pain points, challenges, or issues that need solving',
+    solution: 'Products, services, or approaches that address problems', 
+    market: 'Target audiences, customer segments, or market opportunities',
+    tech: 'Technologies, tools, platforms, or technical capabilities',
+    theme: 'High-level concepts, trends, or strategic directions',
+    note: 'General observations, insights, or miscellaneous information'
+  }
+
+  const scoringGuide = {
+    painkiller: '1-5: How well does this address a real pain point? (1=nice-to-have, 5=must-have)',
+    founderFit: '1-5: How well does this align with founder strengths/background? (1=poor fit, 5=perfect fit)',
+    timing: '1-5: How good is the market timing? (1=too early/late, 5=perfect timing)',
+    moat: '1-5: How defensible is this competitive advantage? (1=no moat, 5=strong moat)',
+    practicality: '1-5: How feasible is this to implement? (1=very hard, 5=easy to execute)'
+  }
+
+  const relationGuide = {
+    solves: 'One node directly addresses/fixes the other (solution → problem)',
+    depends_on: 'One node requires the other to exist/work (dependent → dependency)', 
+    competes_with: 'Nodes are alternatives or competitors to each other',
+    related: 'General connection or relevance between nodes',
+    enables: 'One node makes the other possible or easier (enabler → enabled)',
+    contradicts: 'Nodes are in conflict or oppose each other'
+  }
+
   const nodeSchema = {
-    title: 'string (required)',
-    kind: '"problem" | "solution" | "market" | "tech" | "theme" | "note" (required)',
-    body: 'string (optional)',
-    tags: ['string', '... (optional)'],
-    score: {
-      painkiller: 'number 1-5 (optional)',
-      founderFit: 'number 1-5 (optional)',
-      timing: 'number 1-5 (optional)',
-      moat: 'number 1-5 (optional)',
-      practicality: 'number 1-5 (optional)'
-    }
+    id: 'string (required, use format "node-N" where N is nextNodeId + index)',
+    title: 'string (required, clear and concise name)',
+    kind: `"problem" | "solution" | "market" | "tech" | "theme" | "note" (required)
+    
+NODE TYPE GUIDE:
+${Object.entries(nodeTypeGuide).map(([key, desc]) => `- ${key}: ${desc}`).join('\n')}`,
+    body: 'string (optional, detailed description or explanation)',
+    tags: ['string', '... (optional, relevant keywords or categories)'],
+    score: `{
+SCORING GUIDE (all optional, use 1-5 scale):
+${Object.entries(scoringGuide).map(([key, desc]) => `- ${key}: ${desc}`).join('\n')}
+    }`
   }
 
   const edgeSchema = {
-    sourceId: 'string (required, must match an existing node id)',
-    targetId: 'string (required, must match an existing node id)',
-    relation: '"solves" | "depends_on" | "competes_with" | "related" | "enables" | "contradicts" (required)',
-    confidence: 'number 0.0-1.0 (required)',
-    rationale: 'string (optional)'
+    sourceId: 'string (required, must be either a referenced user node ID or a newly created node ID)',
+    targetId: 'string (required, must be either a referenced user node ID or a newly created node ID)',
+    relation: `"solves" | "depends_on" | "competes_with" | "related" | "enables" | "contradicts" (required)
+    
+RELATION GUIDE:
+${Object.entries(relationGuide).map(([key, desc]) => `- ${key}: ${desc}`).join('\n')}`,
+    confidence: 'number 0.0-1.0 (required, how confident you are in this relationship)',
+    rationale: 'string (optional, brief explanation of why this relationship exists)'
   }
 
   return [
@@ -46,6 +76,21 @@ export function buildXMLSystemPrompt(params: {
   referencedNodeIds?: string[]
 }): string {
   const { userPrompt, allNodes, referencedNodeIds = [] } = params
+
+  // Calculate next available node ID based on existing nodes
+  const extractNodeNumber = (id: string): number => {
+    const match = id.match(/node-(\d+)/)
+    return match ? parseInt(match[1], 10) : 0
+  }
+  
+  const existingNodeNumbers = allNodes.map(n => extractNodeNumber(n.id))
+  const nextNodeId = existingNodeNumbers.length > 0 ? Math.max(...existingNodeNumbers) + 1 : 1
+  
+  const nextNodeIdXML = [
+    '<nextNodeId><![CDATA[',
+    nextNodeId.toString(),
+    ']]></nextNodeId>'
+  ].join('\n')
 
   const referencedNodes = allNodes
     .filter(n => referencedNodeIds.includes(n.id))
@@ -74,8 +119,31 @@ export function buildXMLSystemPrompt(params: {
 
   const instructions = [
     '<instructions>',
-    'You are Asteria\'s AI graph assistant. Generate high-quality idea nodes and/or relationship edges for a knowledge graph.',
-    'When suggesting edges, use existing node ids only. When suggesting nodes, do not invent ids.',
+    'You are Asteria\'s AI graph assistant for startup idea exploration. Generate high-quality nodes and edges for a knowledge graph.',
+    '',
+    'CONTEXT: This is a mind-mapping tool for entrepreneurs to explore business ideas, problems, solutions, markets, and technologies.',
+    '',
+    'NODE CREATION GUIDELINES:',
+    '- Use clear, concise titles (2-6 words)',
+    '- Choose appropriate node types based on content',
+    '- Add meaningful descriptions in the body field',
+    '- Include relevant tags for categorization',
+    '- Apply scoring thoughtfully (1-5 scale) when applicable',
+    '- Use sequential IDs starting from nextNodeId (format: "node-N", "node-N+1", etc.)',
+    '',
+    'EDGE CREATION GUIDELINES:',
+    '- Only connect between referenced user nodes OR newly created nodes',
+    '- Do not create edges to nodes that exist but are not referenced',
+    '- Choose relations that make logical sense',
+    '- Set confidence based on how certain you are (0.0-1.0)',
+    '- Add rationale to explain non-obvious relationships',
+    '',
+    'EXAMPLES:',
+    '- problem: "High customer acquisition costs" (painkiller: 4, practicality: 3)',
+    '- solution: "Referral program platform" (timing: 4, moat: 2)',  
+    '- market: "Small e-commerce businesses" (market size, addressability)',
+    '- tech: "React Native mobile app" (technical feasibility, complexity)',
+    '',
     'Return ONLY a single JSON object with the following shape and nothing else:',
     '{ "nodes": IdeaNodeDraft[], "edges": LinkSuggestion[] }',
     'Avoid prose. No markdown code fences. No commentary.',
@@ -90,6 +158,7 @@ export function buildXMLSystemPrompt(params: {
     '<asteriaPrompt>',
     instructions,
     buildSchemasXML(),
+    nextNodeIdXML,
     referencedXML,
     userSection,
     '</asteriaPrompt>'

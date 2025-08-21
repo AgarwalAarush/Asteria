@@ -10,6 +10,7 @@ interface AIMentionInputProps {
   className?: string
   onChange?: (plainText: string, mentions: Array<{ id: string; title: string }>, html: string) => void
   onFocusChange?: (focused: boolean) => void
+  initialMentions?: Array<{ id: string; title: string }>
 }
 
 function extractPlainTextFromHTML(root: HTMLElement): { text: string; mentions: Array<{ id: string; title: string }> } {
@@ -37,7 +38,7 @@ function extractPlainTextFromHTML(root: HTMLElement): { text: string; mentions: 
   return { text, mentions }
 }
 
-export function AIMentionInput({ nodes, placeholder, className = '', onChange, onFocusChange }: AIMentionInputProps) {
+export function AIMentionInput({ nodes, placeholder, className = '', onChange, onFocusChange, initialMentions = [] }: AIMentionInputProps) {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [isFocused, setIsFocused] = useState(false)
@@ -46,6 +47,8 @@ export function AIMentionInput({ nodes, placeholder, className = '', onChange, o
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [menuPos, setMenuPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 })
   const [mode, setMode] = useState<'node' | 'tag'>('node')
+  const isInitializingRef = useRef(false)
+  const lastInitialMentionsRef = useRef<string>('')
   const allTags = useMemo(() => {
     const t = new Set<string>()
     nodes.forEach(n => (n.data.tags || []).forEach(tag => t.add(tag)))
@@ -67,7 +70,7 @@ export function AIMentionInput({ nodes, placeholder, className = '', onChange, o
   }, [allTags, query, mode])
 
   const updateExternalValue = useCallback(() => {
-    if (!editorRef.current) return
+    if (!editorRef.current || isInitializingRef.current) return
     const { text, mentions } = extractPlainTextFromHTML(editorRef.current)
     onChange?.(text, mentions, editorRef.current.innerHTML)
   }, [onChange])
@@ -273,6 +276,53 @@ export function AIMentionInput({ nodes, placeholder, className = '', onChange, o
     closeSuggestions()
     updateExternalValue()
   }
+
+  // Populate editor with initial mentions
+  useEffect(() => {
+    if (!editorRef.current) return
+    
+    // Check if initialMentions actually changed
+    const currentMentionsString = JSON.stringify(initialMentions)
+    if (currentMentionsString === lastInitialMentionsRef.current) return
+    
+    // Set flag to prevent infinite loop
+    isInitializingRef.current = true
+    
+    // Clear existing content
+    editorRef.current.innerHTML = ''
+    
+    // Only populate if we have mentions
+    if (initialMentions.length > 0) {
+      // Add each mention as a span
+      initialMentions.forEach((mention, index) => {
+        const span = document.createElement('span')
+        span.contentEditable = 'false'
+        span.dataset.nodeId = mention.id
+        span.dataset.title = mention.title
+        span.className = 'inline-flex items-center px-1 py-0 rounded-md border border-gray-200 dark:border-[#262626] bg-gray-100 dark:bg-[#191919] text-gray-900 dark:text-white align-middle'
+        span.textContent = `@${mention.title}`
+        
+        editorRef.current!.appendChild(span)
+        
+        // Add space after each mention except the last
+        if (index < initialMentions.length - 1) {
+          editorRef.current!.appendChild(document.createTextNode(' '))
+        }
+      })
+      
+      // Add a space at the end if we have mentions
+      editorRef.current.appendChild(document.createTextNode(' '))
+    }
+    
+    // Update the reference and clear the flag
+    lastInitialMentionsRef.current = currentMentionsString
+    isInitializingRef.current = false
+    
+    // Only call updateExternalValue if we actually have mentions to avoid empty triggers
+    if (initialMentions.length > 0) {
+      updateExternalValue()
+    }
+  }, [initialMentions, updateExternalValue])
 
   useEffect(() => {
     const onClickOutside = (ev: MouseEvent) => {

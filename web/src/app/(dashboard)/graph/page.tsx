@@ -8,6 +8,14 @@ import { NodeEditPanel } from '@/components/NodeEditPanel'
 import { AuthModal } from '@/components/auth/AuthModal'
 import { SettingsDialog } from '@/components/SettingsDialog'
 import { Button } from '@/components/ui/button'
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle 
+} from '@/components/ui/dialog'
 import { Download, Upload } from 'lucide-react'
 import { useAutoSave, useGraphData } from '@/hooks/useAutoSave'
 import { DatabaseService } from '@/lib/database'
@@ -131,7 +139,15 @@ export default function GraphPage() {
   // Auto-save changes to database
   const { saveNow, isSaving } = useAutoSave(nodes, edges, {
     onSaveStart: () => console.log('Auto-saving...'),
-    onSaveEnd: () => console.log('Auto-save complete'),
+    onSaveEnd: () => {
+      console.log('Auto-save complete')
+      // Trigger layout restructuring after auto-save
+      setTimeout(() => {
+        if (layoutFunctions) {
+          layoutFunctions.relayoutAll()
+        }
+      }, 100)
+    },
     onSaveError: (error) => console.error('Auto-save failed:', error)
   })
   const [selectedNodes, setSelectedNodes] = useState<Node<ReactFlowNodeDataType>[]>([])
@@ -143,6 +159,8 @@ export default function GraphPage() {
   const [isAddingNewNode, setIsAddingNewNode] = useState(false)
   const [isAIFocused, setIsAIFocused] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [nodesToDelete, setNodesToDelete] = useState<Node<ReactFlowNodeDataType>[]>([])
   const [layoutFunctions, setLayoutFunctions] = useState<{
     relayoutAll: () => void
     relayoutFrom: (nodeId: string) => void
@@ -187,15 +205,68 @@ export default function GraphPage() {
         e.preventDefault()
         setIsAIAssistantOpen(!isAIAssistantOpen)
       }
+
+      // Delete selected nodes with 'd' key
+      if (e.key.toLowerCase() === 'd' && selectedNodes.length > 0 && !isEditPanelOpen && !isAIFocused) {
+        e.preventDefault()
+        setNodesToDelete(selectedNodes)
+        setIsDeleteDialogOpen(true)
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isEditPanelOpen, isAIFocused, isAIAssistantOpen])
+  }, [isEditPanelOpen, isAIFocused, isAIAssistantOpen, selectedNodes])
+
+  // Handle bulk node deletion
+  const handleConfirmDeleteNodes = useCallback(async () => {
+    if (nodesToDelete.length === 0) return
+
+    try {
+      // Delete each node from database first
+      const nodeIdsToDelete = nodesToDelete.map(n => n.id)
+      await Promise.all(nodeIdsToDelete.map(nodeId => DatabaseService.deleteNode(nodeId)))
+      
+      // Only update local state after successful database deletions
+      setNodes(prev => prev.filter(node => !nodesToDelete.some(delNode => delNode.id === node.id)))
+      
+      // Remove connected edges (they should already be deleted by the database cascade)
+      setEdges(prev => prev.filter(edge => 
+        !nodeIdsToDelete.includes(edge.source) && !nodeIdsToDelete.includes(edge.target)
+      ))
+
+      // Clear selection
+      setSelectedNodes([])
+
+      // Close dialog
+      setIsDeleteDialogOpen(false)
+      setNodesToDelete([])
+
+      // Trigger layout after deletion
+      setTimeout(() => {
+        if (layoutFunctions) {
+          layoutFunctions.relayoutAll()
+        }
+      }, 100)
+    } catch (error) {
+      console.error('Failed to delete nodes from database:', error)
+      alert('Failed to delete some nodes. Please try again.')
+      // Keep dialog open for retry
+    }
+  }, [nodesToDelete, layoutFunctions])
+
+  // Sync selected nodes to the nodes array for React Flow visual feedback
+  useEffect(() => {
+    const selectedNodeIds = new Set(selectedNodes.map(n => n.id))
+    setNodes(prev => prev.map(node => ({
+      ...node,
+      selected: selectedNodeIds.has(node.id)
+    })))
+  }, [selectedNodes])
 
   // Handle node selection (with multi-select support)
   const handleNodeClick = useCallback((node: Node<ReactFlowNodeDataType>, event?: React.MouseEvent) => {
-    if (event?.ctrlKey || event?.metaKey) {
+    if (event?.ctrlKey || event?.metaKey || event?.shiftKey) {
       // Multi-select: add/remove from selection
       setSelectedNodes(prev => {
         const isSelected = prev.some(n => n.id === node.id)
@@ -240,6 +311,13 @@ export default function GraphPage() {
           : node
       )
     )
+
+    // Trigger layout restructuring after node update
+    setTimeout(() => {
+      if (layoutFunctions) {
+        layoutFunctions.relayoutAll()
+      }
+    }, 100)
   }
 
   // Handle AI actions
@@ -339,31 +417,31 @@ export default function GraphPage() {
 
   // Handle deleting nodes
   const handleDeleteNode = useCallback(async (nodeId: string) => {
-    // Optimistically update local state first for better UX
-    setNodes((nds) => nds.filter(n => n.id !== nodeId))
-    setEdges((eds) => eds.filter(e => e.source !== nodeId && e.target !== nodeId))
-    
-    // Close edit panel if deleting the currently edited node
-    if (editingNode?.id === nodeId) {
-      setIsEditPanelOpen(false)
-      setEditingNode(null)
-    }
-
-    // Delete from database in background
     try {
+      // Delete from database first
       await DatabaseService.deleteNode(nodeId)
+      
+      // Only update local state after successful database deletion
+      setNodes((nds) => nds.filter(n => n.id !== nodeId))
+      setEdges((eds) => eds.filter(e => e.source !== nodeId && e.target !== nodeId))
+      
+      // Close edit panel if deleting the currently edited node
+      if (editingNode?.id === nodeId) {
+        setIsEditPanelOpen(false)
+        setEditingNode(null)
+      }
+
+      // Apply layout after deletion
+      setTimeout(() => {
+        if (layoutFunctions) {
+          layoutFunctions.relayoutAll()
+        }
+      }, 0)
     } catch (error) {
       console.error('Failed to delete node from database:', error)
-      // If database delete fails, we could revert the optimistic update here
-      // but for now we'll just log the error
+      // Don't update local state if database deletion failed
+      alert('Failed to delete node. Please try again.')
     }
-
-    // Apply layout after deletion
-    setTimeout(() => {
-      if (layoutFunctions) {
-        layoutFunctions.relayoutAll()
-      }
-    }, 0)
   }, [editingNode?.id, layoutFunctions])
 
   // Handle adding linked nodes from radial actions
@@ -437,22 +515,21 @@ export default function GraphPage() {
 
   // Handle removing parent relationship
   const handleRemoveParent = async (childId: string, parentId: string) => {
-    // Find and remove the edge
+    // Find the edge to remove
     const edgeToRemove = edges.find(e => 
       e.source === parentId && e.target === childId
     )
     
     if (edgeToRemove) {
-      // Optimistically update local state first for better UX
-      setEdges(prevEdges => prevEdges.filter(e => e.id !== edgeToRemove.id))
-      
-      // Delete from database in background
       try {
+        // Delete from database first
         await DatabaseService.deleteEdge(edgeToRemove.id)
+        
+        // Only update local state after successful database deletion
+        setEdges(prevEdges => prevEdges.filter(e => e.id !== edgeToRemove.id))
       } catch (error) {
         console.error('Error deleting edge from database:', error)
-        // If database delete fails, we could revert the optimistic update here
-        // but for now we'll just log the error
+        alert('Failed to remove connection. Please try again.')
       }
     }
   }
@@ -837,6 +914,9 @@ export default function GraphPage() {
               selectedNodes={selectedNodes}
               onAIAction={handleAIAction}
               onFocusChange={setIsAIFocused}
+              onAddNode={(node) => setNodes(nds => [...nds, node])}
+              onAddEdge={(edge) => setEdges(eds => [...eds, edge])}
+              onRelayout={() => layoutFunctions?.relayoutAll()}
             />
           </div>
         </div>
@@ -869,6 +949,36 @@ export default function GraphPage() {
         open={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Selected Nodes</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {nodesToDelete.length} selected node{nodesToDelete.length !== 1 ? 's' : ''}? 
+              This action cannot be undone and will also remove any connected edges.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteDialogOpen(false)
+                setNodesToDelete([])
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDeleteNodes}
+            >
+              Delete {nodesToDelete.length} Node{nodesToDelete.length !== 1 ? 's' : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
