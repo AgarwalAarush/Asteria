@@ -8,7 +8,7 @@
 
 ---
 
-</div># Asteria
+</div>
 
 An AI-powered mind-mapping application for startup ideas and business concepts. Create interconnected graphs of problems, solutions, markets, technologies, and themes with intelligent content generation and relationship suggestions.
 
